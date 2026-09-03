@@ -1,0 +1,1 @@
+"""backend 参考适配器与 ChatBackend 契约。见 ../lm_reason.py 的 ChatBackend。"""

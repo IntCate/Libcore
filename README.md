@@ -1,279 +1,194 @@
-# MemOS - AI对话智能体
+# libroce — 事件网格（Mesh）工程 · 参考实现
 
-MemOS 是一个基于 Vue 3 和 Python FastAPI + PyWebview 开发的跨平台桌面应用，专注于提供强大的 AI 对话智能体功能，集成了 MCP（模型上下文协议）、企业级 RAG（检索增强生成）、Skill 技能系统以及记忆系统，为用户提供高效、智能的对话体验和知识管理解决方案。
+> **libroce 是「Mesh（事件网格）工程」范式的一个最小参考实现。**
+> 本 README 先讲清楚 *什么是 Mesh 工程*（范式定名与定性），再说明 *libroce 如何落地它*。
 
-## 项目特点
+---
 
-- **现代化技术栈**：Vue 3 + FastAPI + Python，提供流畅的用户体验和高性能后端
-- **跨平台支持**：基于 Web 技术，可在多种操作系统上运行
-- **分层架构**：清晰的四层后端架构（基础设施层 → 能力层 → AI 工程层 → 业务逻辑层），便于维护和扩展
-- **丰富的功能**：集成 AI 对话、模型管理、文档处理、技能系统、记忆系统等多种功能
+## 一、什么是 Mesh 工程
 
-## 核心功能
+### 1.1 为什么需要一个新范式
 
-### AI对话智能体
-- 提供流畅的自然语言对话体验
-- 支持多轮对话和上下文理解
-- 可定制对话风格和行为
-- 支持智能工具调用和 Agent 功能
-- 基于 LangGraph 的编排引擎，支持复杂的 Agent 工作流
+业界 agentic 架构目前几乎只有两个形态，且**被逼着二选一**：
 
-### MCP（模型上下文协议）
-- 集成 Anthropic 模型上下文协议，支持工具调用
-- 连接多个 MCP 服务器，加载和管理外部工具
-- 将 MCP 工具转换为 LangChain 工具，与智能体集成
-- 提供 MCP 工具的上传、管理和配置功能
+- **Graph（图工程）**：预先画好节点与边（A→B→C）。受控、可预测、可审批；但僵化，改流程要改图。
+- **Agentic Loop（循环工程）**：一个模型围着它自己的上下文自我循环。自由、动态；但横切能力（限流/鉴权/trace）难插、多 agent 难协作、自迭代没有天然数据收口。
 
-### Skill 技能系统
-- 基于文件系统的热插拔技能加载机制
-- 通过 SKILL.md 文件定义技能元数据和行为描述
-- 支持技能规格自动导出为 OpenAI Tool 格式，供 Agent 调用
-- 后台文件监控，支持运行时动态新增、修改和删除技能
-- 支持脚本和引用文件等技能附属资源
+两个范式都缺一张**"信号的一等公民通道"**：消息藏在函数调用里、横切逻辑只能靠套壳、运行轨迹没有统一着落点。Mesh 就是为补上这一块而提出的第三形态。
 
-### 记忆系统
-- 支持对话记忆的持久化存储和检索
-- 基于语义相似度的记忆检索器
-- 向量记忆存储，支持高效的相似度匹配
-- 本地存储与向量存储双模支持
+### 1.2 Mesh 的定义（一句话）
 
-### 企业级RAG（检索增强生成）
-- 支持多种文档格式导入（PDF、Word、Markdown等）
-- 高效的向量检索和知识库管理
-- 可定制的检索策略和阈值调整
-- 支持多知识库并行检索
-- 企业级数据安全和隐私保护
+> **以 "事件总线（Mesh）" 为数据面与通讯面，以 "运行时决策" 为边的生长机制，使 Graph 与 Loop 在同一基底上共存并可互相折叠的编排范式。**
 
-### 可视化功能
-- 知识图谱可视化
-- 上下文可视化
-- 工具执行状态展示
+展开是三句：
 
-## 技术栈
+1. **网是一等公民**：所有信号（点名 `Dispatch`、广播 `Notice`）都流经事件总线。因此它可以被拦截（横切面）、被回放、被采集（自迭代）、供多 agent 互点。
+2. **边由运行时决策浮现**：没有预先画死的执行图。"下一步连到哪里"由 Agent（或其他决策者）在运行中决定；点名的目标可以是任何挂在网上的能力（工具 / 存储 / 子 Agent / 记忆）。
+3. **轨迹 ⟷ 工作流可折叠**：Agent 自由跑一圈留下的 `target` 序列轨迹，可冻结成一张受控的 Graph（工作流）；一张 Graph 也可在运行时散开成动态的 Loop。**Graph 不是另一种内核，而是"被验证过的动态决策的固化成形"。**
 
-### 前端
-- **框架**：Vue 3 (Composition API + `<script setup>`)
-- **状态管理**：Pinia
-- **路由**：Vue Router
-- **构建工具**：Vite
-- **UI组件**：自定义组件 + Font Awesome 7
-- **其他**：Three.js (3D可视化), Monaco Editor (代码编辑), KaTeX (数学公式)
+### 1.3 三条独有特征（判据：别人表达不了的能力）
 
-### 后端
-- **框架**：FastAPI（RESTful API）
-- **数据库/ORM**：SQLAlchemy ORM + LanceDB（向量数据库）
-- **AI 编排**：LangChain, LangGraph
-- **MCP 集成**：langchain-mcp-adapters
-- **Agent 引擎**：推理引擎 + 编排引擎 + 上下文引擎 + 渠道引擎
-- **LLM 供应商**：支持 OpenAI、Anthropic、Google、DeepSeek、Ollama、GitHub Models 等多种模型
-- **嵌入模型**：OpenAI、Ollama、HuggingFace 多种嵌入模型支持
-- **配置管理**：YAML + Pydantic Settings
-- **桌面应用**：PyWebView
+| # | Mesh 独有能力 | 传统 Graph | 传统 Loop |
+|---|---|---|---|
+| 1 | 事件总线作为一等公民通道（可拦 / 可回放 / 可采集 / 多节点互点） | 无 | 无 |
+| 2 | Graph 与 Loop 由同一执行原语承载、可互相折叠 | 只有图 | 只有循环 |
+| 3 | 全量轨迹天然收口于总线，直接成为自迭代 / 工作流导入的数据源 | 无统一收口 | 无统一收口 |
 
-## 后端架构分层
+凭以上三点，Mesh 不是 Graph 的变体，也不是 Loop 的变体，而是**同时承载两者的统一调度范式**，够格独立成派。
+
+### 1.4 与已知范式对比
+
+| 维度 | Graph | Agentic Loop | **Mesh（本范式）** |
+|---|---|---|---|
+| 下一跳的边 | 预先画死 | 模型逐轮自选 | **决策 + 总线路由，两者皆可** |
+| 信号通道 | 函数调用 | 函数调用 | **事件总线（一等公民）** |
+| 横切能力 | 图中间件 | 套壳/手写 | **总线拦截层（可插拔）** |
+| 多 Agent | 图节点 | 各开各的循环 | **同一网上互点** |
+| 工作流 | 原生（图即工作流） | 靠手写 | **轨迹冻结即工作流** |
+| 自迭代数据 | 无统一收口 | 无 | **轨迹即数据源** |
+
+### 1.5 定性
+
+> **Mesh（事件网格）工程 = 以事件总线为网、以运行时决策为边的生长期范式。** Graph 与 Loop 是网上两种边的形态——预定义（受控 / 可审批）与运行时浮现（自由 / 自愈），二者通过"轨迹冻结 / 图散开"互相折叠。它同时提供**可控性**（工作流入口）与**自由度**（动态决策入口），不必二选一。
+
+---
+
+## 二、libroce：Mesh 的最小落地
+
+libroce 是上述范式的一个**最小可运行参考实现**，专注把"Mesh 的核心"跑通并保持薄。
+
+### 2.1 设计立场
+
+- **内核极薄**：没有业务逻辑，内核只解决"通讯 + 决策 + 闭环"。
+- **`emit + listen` 只负责"通讯"，不负责"决策"**：决策交给挂在网上的决策者（Agent）。
+- **组件可替换**：能力、横切面、后端、存储都以 SPI 接入，可独立热更，不动内核。
+- **自迭代成自然**：全量轨迹都在总线上，回灌即训练数据。
+
+### 2.2 架构分层
 
 ```
-┌─────────────────────────────────────────────────┐
-│                 program/（业务逻辑层）              │
-│   API 路由 → 服务层 → 数据仓库 → SQLAlchemy ORM    │
-├─────────────────────────────────────────────────┤
-│              engineering/（AI 工程层）              │
-│   推理引擎 | 编排引擎 | 上下文引擎 | 渠道引擎        │
-│   Prompt 模板引擎 | LLM 供应商适配 | Agent 管理     │
-├─────────────────────────────────────────────────┤
-│             capabilities/（能力层）                 │
-│      MCP 能力服务 | Skill 技能系统（热插拔）        │
-├─────────────────────────────────────────────────┤
-│           infrastructure/（基础设施层）              │
-│      数据基础设施 | 搜索基础设施 | 知识库 | 记忆系统  │
-└─────────────────────────────────────────────────┘
+高层 API        libroce.api.Agent          —— 开箱即用（普通开发者入口）
+                -------------
+参考接入        agent/lm_reason            —— 把 LLM 接成决策者（工具调用即点名）
+                agent/backends             —— 各 LLM 后端适配（官方 ollama / langchain …）
+                -------------
+决策与调度      agent/spi                  —— 唯一定义：ReasonProvider.decide(ctx)->Action
+                agent/loop                 —— 闭环：reason → dispatch → observe
+                -------------
+内核            core/bus                   —— 事件总线：点名直投 + 广播 + 横切面 + manifest
+                core/event                 —— 信号原语：Dispatch / Notice / CorrelationId / CapabilityResult
+                core/scope                 —— 会话上下文（白板 + 清单 + 因果链）
+                -------------
+插件            plugins/loader             —— 自发现 + 配置=唯一真相源 + 文件驱动热更新
 ```
 
-## 环境要求
+### 2.3 三个 Action 原语（决策者的"答题卡"）
 
-在开始开发前，请确保您的系统已安装以下软件：
+```python
+class Action:
+    target: str      # 点名谁（挂在网上的能力）
+    op: str          # 调它的哪个操作
+    payload: dict    # 参数
+    # 或二选一：
+    finish = True    # "做完了"，结束本轮
+    wait   = True    # "本轮无目标"，回到轮顶刷新清单
+```
 
-- [Node.js](https://nodejs.org/) (v16+) - JavaScript 运行时
-- [npm](https://www.npmjs.com/) (v7+) - Node.js 包管理器
-- [Python](https://www.python.org/) (v3.8+) - Python 运行时
-- [pip](https://pip.pypa.io/en/stable/) - Python 包管理器
+### 2.4 能力清单（manifest）注入
 
-## 快速开始
+每轮循环开始，内核把**最新可调用清单**注入决策上下文 `ctx.capabilities`。Agent 只能点清单里有的；点名不存在 → 总线抛 `NoHandlerError`，当场现形。加/换插件，Agent 下一轮自动看见——这就是"架构自迭代"的第一环。
 
-### 安装依赖
+### 2.5 横切面（原来的 harness 壳，如今拦截信号）
+
+限流 / 鉴权 / trace / 呼叫重试 / 沙箱等不再是"包住 Agent 的壳"，而是**穿在总线信号路径上的横切面插件**（Aspect），按信号或目标匹配，可插拔、可排序、可裁剪。
+
+### 2.6 双层 API
+
+- **普通路径（开箱即用）**：开发者只需"选模型 + 注册能力 + 跑"，完全不用碰适配器 / 装配。
+
+```python
+from libroce.api import Agent
+
+agent = Agent(backend="ollama", model="qwen3:0.6b")
+
+@agent.capability("cap.now", description="返回当前时间")
+def now(payload):
+    import datetime
+    return {"now": datetime.datetime.now().isoformat(timespec="seconds")}
+
+result = agent.run("获取当前时间")   # 剩下框架跑
+```
+
+- **高级路径**：自定义 `ReasonProvider.decide`，或用任意库写 backend（官方 / langchain / 自研），要接去哪就接哪。
+
+### 2.7 配置 = 唯一真相源 + 热更新
+
+```yaml
+plugins:
+  - name: pdf_tool
+    enabled: true
+    description: 解析 PDF 提取文本与分块
+```
+
+- 自发现把目录里的插件**写回**配置文件；框架**读**配置加载；Agent 经 manifest **看**配置；你直接**编辑**配置。一份顶三份，无双真相源。
+- `watch()` 监听文件变化 → 运行时 `on/off` + 广播 → Agent 自动发现（文件驱动热更新）。
+
+### 2.8 目录结构
+
+```
+backend/libroce/
+├── api.py                  # 高层开箱即用 Agent
+├── kernel.py               # 便捷装配
+├── core/                   # 内核（极薄）
+│   ├── bus.py              #   事件总线
+│   ├── event.py            #   信号原语
+│   └── scope.py            #   会话作用域
+├── agent/                  # 决策与闭环
+│   ├── spi.py              #   ReasonProvider / Action
+│   ├── loop.py             #   调度环
+│   ├── lm_reason.py        #   LLM 决策者
+│   └── backends/           #   LLM 后端适配
+├── plugins/                # 插件子系统
+│   └── loader.py           #   自发现 + 配置真相源 + 热更新
+├── demo.py                 # 内核运行演示
+├── demo_llm_ollama.py      # 适配器通用性验证
+├── demo_migrate_file.py    # 真实能力迁移试点
+└── demo_plugins/           # 示例插件
+```
+
+### 2.9 运行与验证
 
 ```bash
-# 安装前端依赖
-npm install
-
-# 安装后端Python依赖
-pip install -r backend/requirements.txt
+cd backend
+python -m libroce.demo                 # 内核：点名/清单/横切面/护栏/热更新/插件自发现
+python -m libroce.demo_llm_ollama      # 用你真机 ollama 验证适配器通用性
+python -m libroce.demo_migrate_file    # 真实能力迁移试点（旧 FileReadTool → 总线能力）
+python -m pytest tests/libroce -q      # 自动化测试
 ```
 
-### 启动开发服务器
+### 2.10 真实能力迁移（薄壳走法）
 
-#### 前端开发服务器
-```bash
-npm run dev
+旧 `tool_kernel` 的 `IBuiltinTool.execute(args, ctx)` → 约 15 行薄壳包成总线 `handler(payload)`，**业务逻辑零重写**：
+
+```python
+async def adapt_builtin(tool):
+    async def handler(dispatch):
+        data = await tool.execute(dispatch.payload, ctx())   # 复用旧工具
+        return CapabilityResult(ok=not _is_error(data), data=data)
+    return handler
 ```
 
-#### 后端开发服务器
-```bash
-python backend/main.py
-```
+已在试点中验证：旧文件读取工具被新内核真实驱动、读到真实文件全文。迁移建议用**短层级名**（`file.read`）作 `target`，长 `component_id` 保留为元数据。
 
-#### 启动桌面应用
-```bash
-python backend/webview_main.py
-```
+---
 
-## 项目结构
+## 三、状态
 
-项目采用前后端分离的架构：
+- **Milestone**：M0 — 最小可运行内核原型（受自动化测试保护）。
+- **已验证理念**：Agent 唯一决策、点名直投（消灭隐性流程）、横切面为信号插件、护栏为内核一部分、全量轨迹为自迭代数据源、配置唯一真相源 + 文件驱动热更新、双层 API、真实旧能力可迁移。
+- **测试**：libroce 测试套件全绿（`tests/libroce/`）。
+- **当前边界**：仍是骨架——决策策略默认"工具调用即点名"，尚无"经验库/自迭代回灌"实装；能力以演示级为主；无持久化与真实外部 API 入口。
 
-```
-├── src/                          # Vue 前端代码
-│   ├── assets/                   # 静态资源
-│   ├── components/               # Vue 组件
-│   ├── composables/              # Vue 组合式函数
-│   ├── layout/                   # 布局组件
-│   ├── router/                   # 路由配置
-│   ├── services/                 # 服务层
-│   ├── store/                    # Pinia 状态管理
-│   ├── static/                   # 静态资源（CSS、JavaScript、字体等）
-│   ├── utils/                    # 工具函数
-│   ├── views/                    # 页面组件
-│   ├── App.vue                   # 主应用组件
-│   └── main.js                   # 应用入口文件
-├── backend/                      # Python 后端代码
-│   ├── app/                      # Python 应用代码
-│   │   ├── __init__.py           # 应用工厂、服务注册
-│   │   ├── dependencies.py       # FastAPI 依赖注入
-│   │   ├── capabilities/         # 能力层
-│   │   │   ├── mcp.py            # MCP 能力服务
-│   │   │   └── skill/            # Skill 技能系统
-│   │   │       ├── protocol.py   # 技能抽象协议
-│   │   │       ├── manager.py    # 技能管理器
-│   │   │       ├── file_skill.py # 基于文件的技能加载
-│   │   │       ├── skill_loader.py   # 技能文件扫描器
-│   │   │       └── skill_watcher.py  # 技能热更新监听器
-│   │   ├── core/                 # 核心基础设施
-│   │   │   ├── config.py         # 配置管理
-│   │   │   ├── database.py       # SQLAlchemy 配置
-│   │   │   ├── data_manager.py   # 数据初始化管理
-│   │   │   ├── instance_manager.py   # 实例管理器
-│   │   │   ├── logger.py         # 日志配置
-│   │   │   └── service_container.py  # 服务容器（DI）
-│   │   ├── engineering/          # AI 工程层
-│   │   │   ├── channel/          # 渠道引擎
-│   │   │   ├── context/          # 上下文引擎
-│   │   │   ├── harness/          # 编排引擎
-│   │   │   ├── inference/        # 推理引擎
-│   │   │   ├── llm/              # LLM 供应商 & Agent 管理
-│   │   │   └── prompt/           # Prompt 模板引擎
-│   │   ├── infrastructure/       # 基础设施层
-│   │   │   ├── data.py           # 数据基础设施
-│   │   │   └── search.py         # 搜索基础设施
-│   │   ├── knowledgebase/        # 知识库服务
-│   │   │   ├── manager.py        # 知识库管理器
-│   │   │   ├── embeddings/       # 嵌入模型适配器
-│   │   │   └── stores/           # 向量存储
-│   │   ├── memory/               # 记忆系统
-│   │   │   ├── manager.py        # 记忆管理器
-│   │   │   ├── retrievers/       # 记忆检索器
-│   │   │   └── stores/           # 记忆存储
-│   │   ├── models/               # 数据模型层
-│   │   │   ├── database/         # SQLAlchemy ORM 模型
-│   │   │   └── schemas/          # Pydantic 响应/输入模型
-│   │   ├── program/              # 业务逻辑层
-│   │   │   ├── api/              # FastAPI 路由
-│   │   │   ├── repositories/     # 数据访问层
-│   │   │   └── services/         # 业务服务层
-│   │   └── utils/                # 工具模块
-│   │       ├── error_handler.py
-│   │       ├── file_utils.py
-│   │       ├── path_manager.py
-│   │       ├── validators.py
-│   │       ├── message/          # 消息工具
-│   │       ├── model/            # 模型工具
-│   │       ├── rag/              # RAG 工具（文档加载、文本分割）
-│   │       └── stream/           # 流式响应工具
-│   ├── data/                     # 运行时数据目录
-│   │   ├── config/               # SQLite 数据库
-│   │   ├── logs/                 # 运行日志
-│   │   ├── prompts/              # 系统提示词模板
-│   │   ├── schemas/              # 消息格式定义
-│   │   └── skills/               # 技能文件目录（热加载）
-│   ├── main.py                   # 后端应用入口
-│   ├── webview_main.py           # 桌面应用入口
-│   └── requirements.txt          # Python 依赖配置
-├── index.html                    # HTML 入口文件
-└── package.json                  # npm 项目配置
-```
+---
 
-## 开发指南
-
-### Vue 前端开发
-
-- 所有 Vue 组件和前端代码位于 `src/` 目录
-- 使用 Vue 3 的 `<script setup>` 语法编写组件
-- 状态管理使用 Pinia
-- 路由配置位于 `src/router/` 目录
-
-### Python 后端开发
-
-- 后端代码位于 `backend/` 目录
-- 使用 FastAPI 框架构建 RESTful API
-- 四层架构：基础设施层 → 能力层 → AI 工程层 → 业务逻辑层
-- 所有服务通过 `ServiceContainer` 统一管理，支持依赖注入
-- 配置文件位于 `backend/app/core/config.py`
-- 支持 Skill 技能热插拔，技能文件放置于 `backend/data/skills/` 目录
-
-## 部署指南
-
-### 开发环境
-
-1. 安装依赖（见快速开始部分）
-2. 启动前端和后端开发服务器
-3. 访问前端开发服务器地址（默认：http://localhost:5173）
-
-### 生产环境
-
-1. 构建前端静态文件：
-   ```bash
-   npm run build
-   ```
-2. 部署后端应用（可使用 uvicorn、gunicorn 等）
-3. 配置前端静态文件服务
-
-## API 接口
-
-后端提供了丰富的 API 接口，包括：
-- 聊天相关：`/api/chats`
-- 消息相关：`/api/messages`
-- 模型管理：`/api/models`
-- 嵌入模型：`/api/embedding-models`
-- 文件管理：`/api/files`
-- MCP 管理：`/api/mcp`
-- 记忆管理：`/api/memory`
-- 向量存储：`/api/vector`
-- 设置管理：`/api/settings`
-- 健康检查：`/api/health`
-
-## 学习资源
-
-- [Vue 3 官方文档](https://v3.vuejs.org/)
-- [FastAPI 官方文档](https://fastapi.tiangolo.com/)
-- [LangChain 文档](https://python.langchain.com/) - 用于RAG功能开发
-- [LangGraph 文档](https://langchain-ai.github.io/langgraph/) - 用于Agent编排
-
-## 贡献指南
-
-1. Fork 项目仓库
-2. 创建功能分支
-3. 提交代码变更
-4. 发起 Pull Request
-
-## 许可证
-
-MIT License
+*作者注：本 README 第一部分为范式论文（Mesh 工程定名与定性），第二部分为 libroce 参考实现说明。两者可分读。*

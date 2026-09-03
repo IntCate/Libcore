@@ -1,0 +1,5 @@
+plugins:
+- name: pdf_tool
+  description: 解析 PDF 提取文本与分块
+- name: vector_store
+  description: 向量化入库文档
