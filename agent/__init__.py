@@ -1,1 +1,1 @@
-"""libroce.agent —— 调度环（唯一决策者）与决策接口 SPIs。"""
+"""libcore.agent —— 调度环（唯一决策者）与决策接口 SPIs。"""

@@ -44,7 +44,14 @@ class CapabilityLoader:
         self.plugins_dir = pathlib.Path(plugins_dir)
         self._live: Dict[str, List[str]] = {}   # plugin_name -> [它登记的 target]
         self._modules: Dict[str, object] = {}   # plugin_name -> 已加载模块（本 loader 缓存）
-        self._default_config = self.plugins_dir / "plugins.yaml"
+        # 配置集中放 libcore/config/（与插件目录分开放，避免散乱）
+        self._default_config = self._config_root() / "capabilities.yaml"
+
+    @staticmethod
+    def _config_root() -> pathlib.Path:
+        """libcore/config/：以插件目录往上两级定位（plugins/capabilities -> libcore）。"""
+        import libcore
+        return pathlib.Path(libcore.__file__).parent / "config"
 
     # ---- 盘点（只看目录，不注册、不写）----
 
@@ -132,7 +139,7 @@ class CapabilityLoader:
 
     def generate_yaml(self) -> str:
         """把目录里所有插件按配置格式生成文本（enabled:true + 默认描述）。"""
-        lines = ["# libroce 插件配置（唯一真相源）",
+        lines = ["# libcore 插件配置（唯一真相源）",
                  "# 编辑本文件 -> watch() 会自动热更新，Agent 下一轮生效", "plugins:"]
         for item in self.scan():
             lines.append(f"  - name: {item['name']}")
@@ -218,6 +225,137 @@ class CapabilityLoader:
             return getattr(module, "DESCRIPTION", "") or ""
         except Exception:
             return ""
+
+    @staticmethod
+    def _load_module(name: str, path: pathlib.Path):
+        spec = importlib.util.spec_from_file_location(name, path)
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[name] = module
+        spec.loader.exec_module(module)
+        return module
+
+
+class AspectLoader:
+    """横切面加载器：与 CapabilityLoader 同构，但管 `aspects/` 目录 + `aspects.yaml`。
+
+    统一机制：同一个 ``register(bus)`` 契约；装配顺序 = ``aspects.yaml`` 里的列表顺序
+    （先注册的先套，before 正序 / after 逆序由 EventBus 保证）。
+    顺序即"列表顺序"，无需 order / before / after / depends_on 字段。
+    """
+
+    def __init__(self, bus: EventBus, aspects_dir) -> None:
+        self.bus = bus
+        self.aspects_dir = pathlib.Path(aspects_dir)
+        self._live: Dict[str, List[str]] = {}   # name -> 它登记的 aspect 类名
+        self._modules: Dict[str, object] = {}
+        # 配置集中放 libcore/config/（与能力共用同一 config 目录）
+        self._default_config = CapabilityLoader._config_root() / "aspects.yaml"
+
+    def scan(self) -> List[dict]:
+        out: List[dict] = []
+        for path in sorted(self.aspects_dir.glob("*.py")):
+            if path.name.startswith("_"):
+                continue
+            out.append({"name": path.stem})
+        return out
+
+    def reconcile(self, config_path=None) -> List[str]:
+        """按配置文件顺序装配横切面。配置 = 唯一真相源，幂等。
+
+        - 配置列表顺序 = 拦截顺序（先后 add_aspect）；
+        - 未列出 / enabled:false -> 下线；
+        - 顺序变化 -> 重建横切管（移除旧的、按新序重放）。
+        """
+        cfg, _path = self._ensure_config(config_path or self._default_config)
+        entries = list(cfg.get("aspects", []))
+        enabled = [e["name"] for e in entries if e.get("enabled", True) is not False]
+
+        # 1) 下线不再启用的横切面（在 EventBus 里按登记过的 aspect 顺序逐个移除）
+        to_remove = [n for n in self._live if n not in enabled]
+        for name in to_remove:
+            self._unload(name)
+        # 2) 上线的按"配置列表顺序"排好，重建横切管（先清空已在下线中保留的）
+        #    对顺序整体重放：移除全部现有 aspects，按新顺序重新 add_aspect
+        keep = [n for n in enabled if n not in self._live]
+        if keep:
+            self._rebuild(entries)
+        else:
+            # 可能只是开关没变但顺序变了——保守起见只要顺序与上次不同就重建
+            if [n for n in self._live] != enabled:
+                self._rebuild(entries)
+        return list(self._live)
+
+    def _rebuild(self, entries) -> None:
+        """把总线上现有 aspects 全部卸下，按配置顺序重新挂载。"""
+        old = self.bus._aspects[:]
+        for a in old:
+            self.bus.remove_aspect(a)
+        self._live.clear()
+        self._modules.clear()
+        for e in entries:
+            if e.get("enabled", True) is False:
+                continue
+            name = e["name"]
+            path = self.aspects_dir / f"{name}.py"
+            if not path.exists():
+                continue
+            module = self._load_module(f"__aspect__.{name}", path)
+            self._modules[name] = module
+            register = getattr(module, "register", None)
+            if callable(register):
+                register(self.bus)
+            self._live[name] = []
+
+    def _unload(self, name: str) -> None:
+        # 移除该插件登记的 aspect（登记时即实例，无法按名精确取，故交由 _rebuild 整体重建）
+        self._live.pop(name, None)
+        self._modules.pop(name, None)
+
+    def load(self, config_path=None) -> List[str]:
+        return self.reconcile(config_path)
+
+    async def watch(self, config_path=None, interval: float = 1.0) -> None:
+        """与 CapabilityLoader.watch 同构：监听 ``aspects.yaml``，变化即重建横切管。
+
+        横切面顺序/开关的变化统一收敛到 ``aspects.yaml``，由本 watch 收口。
+        由调用方以异步任务运行并负责取消。生产可换更强的 watch 后端。
+        """
+        config_path = config_path or self._default_config
+        last = self._config_digest(config_path)
+        while True:
+            await asyncio.sleep(interval)
+            now = self._config_digest(config_path)
+            if now is None or now == last:
+                continue
+            self.reconcile(config_path)
+            await self.bus.publish(Notice(topic="aspect.changed",
+                                          payload={"aspects": list(self._live)}))
+            last = now
+
+    @staticmethod
+    def _config_digest(config_path) -> Optional[int]:
+        try:
+            return pathlib.Path(config_path).stat().st_mtime_ns
+        except OSError:
+            return None
+
+    # ---- 配置读写 ----
+
+    def _ensure_config(self, config_path):
+        if isinstance(config_path, dict):
+            return dict(config_path), None
+        path = pathlib.Path(config_path)
+        if not path.exists():
+            self.write_config(path, {"aspects": self.scan()})
+        import yaml
+        cfg = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+        return cfg, path
+
+    @staticmethod
+    def write_config(config_path, cfg: dict) -> None:
+        import yaml
+        pathlib.Path(config_path).write_text(
+            yaml.dump(cfg, allow_unicode=True, sort_keys=False), encoding="utf-8")
 
     @staticmethod
     def _load_module(name: str, path: pathlib.Path):

@@ -1,11 +1,11 @@
-"""迁移真实能力试点：把旧 tool_kernel 的 FileReadTool 平移成 libroce 总线能力。
+"""迁移真实能力试点：把旧 tool_kernel 的 FileReadTool 平移成 libcore 总线能力。
 
 第 1 幕（纯内核驱动，不依赖模型）：调度环直接点名 file.read，读一个真实文件。
      目的：单独验证【旧的真实工具 + 新内核】这层 100% 正确，排除模型抽风的干扰。
 第 2 幕（真模型驱动）：用你本机 ollama(qwen3:0.6b) 让模型自己决定去读这个文件。
      目的：验证【旧工具 + 真 LLM + 新内核】三方真正串起来。
 
-用法：cd backend && python -m libroce.demo_migrate_file
+用法：cd backend && python -m libcore.demos.demo_migrate_file
 """
 from __future__ import annotations
 
@@ -14,14 +14,14 @@ import asyncio
 from app.runtime.kernel.tool_kernel.builtins.file_builtins import FileReadTool
 from app.runtime.kernel.tool_kernel.spi import ToolExecutionContext
 
-from libroce.core.bus import EventBus
-from libroce.core.event import CapabilityResult
-from libroce.agent.loop import AgentLoop
-from libroce.agent.spi import Action
-from libroce.core.scope import Scope
+from libcore.core.bus import EventBus
+from libcore.core.event import CapabilityResult
+from libcore.agent.loop import AgentLoop
+from libcore.agent.spi import Action
+from libcore.core.scope import Scope
 
 
-TARGET_FILE = "libroce/demo_migrate_file.py"  # 读它自己（确认存在、必成）
+TARGET_FILE = "libcore/demos/demo_migrate_file.py"  # 读它自己（确认存在、必成）
 
 
 def _ctx_session() -> ToolExecutionContext:
@@ -93,8 +93,8 @@ def act2_model_driven(bus) -> None:
     """
     print("\n========== 第 2 幕：你真机 ollama 驱动（qwen3:0.6b，短名 file.read） ==========")
     import asyncio, pathlib
-    from libroce.agent.backends.ollama import OllamaBackend
-    from libroce.agent.lm_reason import LlmReasonProvider
+    from libcore.agent.backends.ollama import OllamaBackend
+    from libcore.agent.lm_reason import LlmReasonProvider
 
     abs_target = str(pathlib.Path(__file__).resolve())  # 当前 demo 文件自身的绝对路径
     tool = FileReadTool()

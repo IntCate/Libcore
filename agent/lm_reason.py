@@ -7,11 +7,11 @@
 == 它如何"适配你的 LLM"，让你不用改框架 ==
 1. 装配时把你项目中已有的 ILLMProvider 实例包成一个 ChatBackend：
        backend = from_provider(provider, credentials=creds)
-   只需这一行；libroce 内核始终不认识具体模型 / 官方库 / langchain。
+   只需这一行；libcore 内核始终不认识具体模型 / 官方库 / langchain。
 2. 换库（官方 SDK / langchain / 自研裸调），只改"提供 backend 的那一行"，
    decide 与内核循环零改动。
 
-不变量：本模块顶部零业务 import（不 import 旧 orchestrator 包），仅依赖标准库 + libroce 自身；
+不变量：本模块顶部零业务 import（不 import 旧 orchestrator 包），仅依赖标准库 + libcore 自身；
 对接旧 provider 的适配放在 from_provider(懒加载) 内，保持内核干净。LM-6 零 langchain_ 引用。
 """
 from __future__ import annotations

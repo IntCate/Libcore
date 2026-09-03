@@ -1,7 +1,7 @@
-"""libroce 开箱即用高层 API —— 普通开发者不需要懂"适配器/backend/装配"。
+"""libcore 开箱即用高层 API —— 普通开发者不需要懂"适配器/backend/装配"。
 
 用法（这就是开发者要写的全部）：
-    from libroce.api import Agent
+    from libcore.api import Agent
 
     agent = Agent(backend="ollama", model="qwen3:0.6b")   # 只要选模型，适配器框架替你搭
 
@@ -62,7 +62,7 @@ def _ensure_defaults() -> None:
 _ensure_defaults()
 
 _DEFAULT_SYSTEM = (
-    "你是 libroce 的调度员。你只能调用给你列出的能力；"
+    "你是 libcore 的调度员。你只能调用给你列出的能力；"
     "根据任务选择一个要调用的能力并带好参数；"
     "所有必须做的事都做完了，就结束（不要再调用任何工具）。"
 )

@@ -1,7 +1,7 @@
 """对接项目现有 LLM provider 层的桥（纯懒加载，避免拖进内核脏依赖）。
 
 说明：
-    libroce/agent/lm_reason.py 顶部零业务 import；只有当用户调用
+    libcore/agent/lm_reason.py 顶部零业务 import；只有当用户调用
     `from_provider(...)` 时，本模块才 import 旧的 llm_node_vendors.spi，
     把现有 ILLMProvider 实例翻译成 lm_reason.ChatBackend。
     这样内核(loop/bus/core)从不 import 旧 orchestrator 包。

@@ -1,0 +1,9 @@
+# libcore 能力插件配置（唯一真相源）
+# 编辑本文件 -> CapabilityLoader.watch() 对总线 on/off，Agent 下一轮生效。
+plugins:
+  - name: pdf_tool
+    enabled: true
+    description: 解析 PDF 提取文本与分块
+  - name: vector_store
+    enabled: true
+    description: 向量化入库文档

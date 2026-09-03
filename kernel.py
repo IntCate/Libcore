@@ -13,7 +13,7 @@ from .agent.spi import ReasonProvider
 
 
 class Kernel:
-    """libroce 最小内核的可运行组合根。"""
+    """libcore 最小内核的可运行组合根。"""
 
     def __init__(self, bus: EventBus, loop: AgentLoop) -> None:
         self.bus = bus

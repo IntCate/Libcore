@@ -10,56 +10,45 @@
 7. 插件加载器 + 配置文件=唯一真相源：目录自发现写回配置 -> 配置驱动加载 -> Agent 自动发现并调用；
 8. 文件驱动热更新：编辑配置文件（enabled 开关 / 描述）保存 -> watch 监听 -> 总线 on/off -> Level 广播 -> Agent 下一轮生效。
 
-运行： cd backend && python -m libroce.demo
+运行： cd backend && python -m libcore.demos.demo
 """
 from __future__ import annotations
 
 import asyncio
 from pathlib import Path
 
-from .core.event import Dispatch, Notice, CapabilityResult
-from .core.bus import EventBus, Aspect
-from .core.scope import Scope
-from .agent.spi import ReasonProvider, Action
-from .agent.loop import AgentLoop
-from .plugins.loader import CapabilityLoader
+from ..core.event import Dispatch, Notice, CapabilityResult
+from ..core.bus import EventBus
+from ..core.scope import Scope
+from ..agent.spi import ReasonProvider, Action
+from ..agent.loop import AgentLoop
+from ..plugins.loader import CapabilityLoader, AspectLoader
 
 
-# ---- 横切面插件 ----
-
-class LoggingAspect(Aspect):
-    """管道日志：打印每条进出总线的信号（证明横切面包围所有信号）。"""
-
-    def _name(self, signal):
-        return signal.target if isinstance(signal, Dispatch) else signal.topic
-
-    async def before(self, signal):
-        kind = "dispatch" if isinstance(signal, Dispatch) else "notice"
-        print(f"  [aspect] before  {kind:<8} {self._name(signal)}  cid={signal.cid.value[:8]}")
-
-    async def after(self, signal, result):
-        kind = "dispatch" if isinstance(signal, Dispatch) else "notice"
-        ok = result.ok if isinstance(result, CapabilityResult) else True
-        print(f"  [aspect] after   {kind:<8} {self._name(signal)}  -> {'ok' if ok else 'fail'}")
-
-
-class TraceAspect(Aspect):
-    """追踪：把每步调度（谁→调谁→结果）累积成自迭代训练数据。"""
-
-    def __init__(self):
-        self.records: list[dict] = []
-
-    async def after(self, signal, result):
-        if isinstance(signal, Dispatch):
-            self.records.append({
-                "target": signal.target, "op": signal.op,
-                "cid": signal.cid.value,
-                "parent_cid": signal.parent_cid.value if signal.parent_cid else None,
-                "ok": result.ok, "data": result.data,
-            })
-
-
+# ---- 横切面：经 plugins/aspects（文件插件 + config/aspects.yaml 列表序）统一装配 ----
 # ---- 占位能力（未来从旧 tool_kernel / services 平移） ----
+
+_LIBROOT = Path(__file__).parent.parent
+ASPECTS_DIR = _LIBROOT / "plugins" / "aspects"
+CONFIG_DIR = _LIBROOT / "config"
+
+
+def _install_aspects(bus: EventBus, config_path=None) -> list:
+    """装配横切面，返回总线当前有序的横切面插件实例列表（含顺序语义）。"""
+    AspectLoader(bus, ASPECTS_DIR).reconcile(config_path)
+    return bus._aspects
+
+
+def _trace(bus: EventBus):
+    """取总线上的追踪横切面（演示读取调度轨迹）。
+
+    用鸭子类型而非 isinstance：横切面经 AspectLoader 以独立模块名加载，
+    类对象可能与模块内 import 的不是同一份，故按 ``records`` 属性收敛。
+    """
+    for a in bus._aspects:
+        if hasattr(a, "records"):
+            return a
+    return None
 
 def tool_pdf_parse(d: Dispatch) -> CapabilityResult:
     print(f"   >> tool.pdf.parse")
@@ -187,10 +176,9 @@ async def run_limited(bus: EventBus, reason: ReasonProvider, max_steps: int) -> 
 
 async def main() -> None:
     print("=== 1) Agent 从可呼叫清单发现并调度能力（带日志 + 追踪）===")
-    trace = TraceAspect()
     bus = EventBus()
-    bus.add_aspect(LoggingAspect())
-    bus.add_aspect(trace)
+    _install_aspects(bus)
+    trace = _trace(bus)
     # 每个能力登记时自报 description，汇成"可呼叫清单"
     bus.on("tool.pdf", tool_pdf_parse, meta={"description": "解析 PDF 提取文本与分块", "ops": ["parse"]})
     bus.on("storage.vector", storage_vector_upsert, meta={"description": "向量化入库文档", "ops": ["upsert"]})
@@ -219,9 +207,8 @@ async def main() -> None:
 
     print("\n=== 4) 热更新闭环：运行中新增能力，Agent 下一轮即发现并使用 ===")
     hb = EventBus()
-    trace2 = TraceAspect()
-    hb.add_aspect(LoggingAspect())
-    hb.add_aspect(trace2)
+    _install_aspects(hb)
+    trace2 = _trace(hb)
     changed_log = []
     async def on_changed(_n): changed_log.append(_n.payload)
     hb.subscribe("capability.changed", on_changed)
@@ -245,10 +232,10 @@ async def main() -> None:
 
     print("\n=== 5) 配置=唯一真相源：自举生成 -> 加载 ===")
     lb = EventBus()
-    cfg_path = Path(__file__).parent / "auto_generated.yaml"
+    cfg_path = CONFIG_DIR / "auto_generated.yaml"
     if cfg_path.exists():
         cfg_path.unlink()
-    loader5 = CapabilityLoader(lb, Path(__file__).parent / "demo_plugins")
+    loader5 = CapabilityLoader(lb, _LIBROOT / "plugins" / "capabilities")
     loaded = loader5.load(cfg_path)          # 首次无配置 -> 自动生成一份再加载
     print(f"   自举生成配置: {cfg_path.exists()}  在线插件: {loaded}")
     print("   加载后清单:", sorted(c["target"] for c in lb.manifest()))
@@ -258,12 +245,12 @@ async def main() -> None:
 
     print("\n=== 6) 文件驱动热更新：改配置文件保存，Agent 下一轮即生效 ===")
     hbus = EventBus()
-    hot_cfg = Path(__file__).parent / "hot_config.yaml"
+    hot_cfg = CONFIG_DIR / "hot_config.yaml"
     CapabilityLoader.write_config(hot_cfg, {"plugins": [
         {"name": "pdf_tool", "enabled": True, "description": "解析 PDF"},
         {"name": "vector_store", "enabled": True, "description": "向量化入库"},
     ]})
-    hl = CapabilityLoader(hbus, Path(__file__).parent / "demo_plugins")
+    hl = CapabilityLoader(hbus, _LIBROOT / "plugins" / "capabilities")
     hl.reconcile(hot_cfg)
     print("   初始清单:", sorted(c["target"] for c in hbus.manifest()))
     # 订阅变更广播
@@ -290,6 +277,13 @@ async def main() -> None:
     task.cancel()
     print("   收到 capability.changed:", changes)
     print("   最终清单:", sorted(f"{c['target']}『{c.get('description')}』" for c in hbus.manifest()))
+
+    print("\n=== 7) 清理演示生成的临时配置文件 ===")
+    for tmp in ("auto_generated.yaml", "hot_config.yaml"):
+        p = CONFIG_DIR / tmp
+        if p.exists():
+            p.unlink()
+            print(f"   已删除 {tmp}")
 
 
 if __name__ == "__main__":

@@ -78,6 +78,13 @@ class EventBus:
         """挂载横切面插件。顺序 = 挂载顺序（before 正序 / after 逆序）。"""
         self._aspects.append(aspect)
 
+    def remove_aspect(self, aspect: Aspect) -> None:
+        """卸载横切面插件（热更新重建横切管时使用）。"""
+        try:
+            self._aspects.remove(aspect)
+        except ValueError:
+            pass
+
     # ---- 投递 ----
 
     async def dispatch(self, d: Dispatch) -> CapabilityResult:

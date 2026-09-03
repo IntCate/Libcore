@@ -1,0 +1,10 @@
+# libcore 横切面插件配置（唯一真相源）
+# 编辑本文件 -> AspectLoader.watch() 会重建横切管，Agent 下一轮生效。
+# 列表顺序 = 拦截顺序：before 正序（先套先跑），after 逆序（后套先跑）。
+aspects:
+  - name: logging
+    enabled: true
+  - name: tracing
+    enabled: true
+  - name: sandbox
+    enabled: true

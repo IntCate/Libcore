@@ -1,6 +1,6 @@
 """验证 backend 通用性：同一个框架，分别喂「ollama 官方」和「langchain-ollama」两种 backend。
 
-运行：python -m libroce.demo_llm_ollama
+运行：python -m libcore.demos.demo_llm_ollama
 依赖：本机 ollama 已在 11434 运行，且存在 qwen3:0.6b（支持 tools）。
 """
 from __future__ import annotations
@@ -9,17 +9,17 @@ import asyncio
 import datetime
 import sys
 
-from libroce.agent.backends.langchain import LangChainOllamaBackend
-from libroce.agent.backends.ollama import OllamaBackend
-from libroce.agent.lm_reason import LlmReasonProvider
-from libroce.agent.loop import AgentLoop
-from libroce.core.bus import EventBus
-from libroce.core.event import CapabilityResult
+from libcore.agent.backends.langchain import LangChainOllamaBackend
+from libcore.agent.backends.ollama import OllamaBackend
+from libcore.agent.lm_reason import LlmReasonProvider
+from libcore.agent.loop import AgentLoop
+from libcore.core.bus import EventBus
+from libcore.core.event import CapabilityResult
 
 MODEL = "qwen3:0.6b"
 BASE = "http://localhost:11434"
 SYSTEM = (
-    "你是 libroce 的调度员。你唯一可调用的能力是 cap.now（返回当前时间）。\n"
+    "你是 libcore 的调度员。你唯一可调用的能力是 cap.now（返回当前时间）。\n"
     "请先调用 cap.now 获取时间；看到结果后立即结束，不要再调用任何工具。"
 )
 GOAL = "获取当前时间"
