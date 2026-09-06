@@ -1,0 +1,21 @@
+# libcore LLM 适配器配置（唯一真相源）
+# 编辑本文件 -> libcore.llm 包重新加载后注册的 backend 工厂默认参数随之生效。
+# 各 backend 的连接参数作为工厂默认值；调用方显式传参可覆盖。
+llm:
+  # 引导默认值：内核装配时使用的默认 backend 与模型
+  default_backend: ollama
+  default_model: qwen3:0.6b
+  temperature: 0.2
+  # 内置调度员系统指令（唯一真相源）：prompt 输入节点 / Agent / LlmReasonProvider 统一读取，
+  # 缺省回退到代码内建兜底文本（见 llm/__init__.py）。
+  system_prompt: |
+    你是 libcore 的调度员。你只能调用给你列出的能力；
+    根据任务选择一个要调用的能力并带好参数；
+    所有必须做的事都做完了，就结束（不要再调用任何工具）。
+  # 已注册的 backend 及其连接默认参数（未列出的 backend 用代码内建默认）
+  backends:
+    ollama:
+      base_url: http://localhost:11434
+    langchain-ollama:
+      base_url: http://localhost:11434
+      model: qwen3:0.6b

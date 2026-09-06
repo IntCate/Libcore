@@ -1,0 +1,28 @@
+# libcore 横切面插件配置（唯一真相源）
+# 编辑本文件 -> AspectLoader.watch() 会重建横切管，Agent 下一轮生效。
+# 列表顺序 = 拦截顺序：before 正序（先套先跑），after 逆序（后套先跑）。
+aspects:
+  # 审查类护栏（before 拒绝）：先拒绝，再让观察类记录
+  - name: permission
+    enabled: true
+  - name: circuit_breaker
+    enabled: true
+  - name: sandbox
+    enabled: true
+  # 编排治理：迭代预算 + 死循环检测（匹配 loop.iteration 广播）
+  - name: budget_guard
+    enabled: true
+  - name: loop_governor
+    enabled: true
+  # 观察类：循环追踪记录（匹配 loop.iteration 广播）
+  - name: trace_recorder
+    enabled: true
+  # 观察类：日志 / 追踪 / 审计 / 遥测
+  - name: logging
+    enabled: true
+  - name: tracing
+    enabled: true
+  - name: audit
+    enabled: true
+  - name: telemetry
+    enabled: true

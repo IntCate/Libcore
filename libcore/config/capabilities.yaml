@@ -1,0 +1,63 @@
+# libcore 能力插件配置（唯一真相源）
+# 编辑本文件 -> CapabilityLoader.watch() 对总线 on/off，Agent 下一轮生效。
+#
+# manifest 只暴露三个真入口（门面）：skill（技能）+ tools（工具）+ mcp（MCP 工具）。
+# 具体技能是 skills/ 文件资源，经 skill 渐进披露；具体工具是 tools/ 子包定义，
+# 具体 MCP 工具是 mcp/ 子包定义——都经各自门面渐进披露，不在 manifest 一级。
+#
+# 注：工具门面插件文件是 tool.py（避免与 tools/ 子包同名），其 tag 名
+# （bus.on 的 target）仍是 "tools"。此处 name 对应插件文件名 tool。
+#
+# 决策输入节点（input_nodes）：内核每轮决策前按此顺序点名，产出消息序列注入决策者。
+# 每个节点可指定 slot（system/user）决定其消息在最终 messages 中的位置：
+#   - system：治理指令/视角规则（如 prompt、budget 压力告警）在前
+#   - user：会话素材/记忆/工具结果（如 context、memory、_tool）在后
+# 加一个输入节点只改这里，内核零改动。
+input_nodes:
+  - target: context
+    slot: user
+    # 裁剪策略：决定"模型看会话的哪些内容"（context 是 session 的局部视图）
+    trim:
+      last_n: 20
+      exclude_last_user_if_present: false
+  - target: prompt
+    slot: system
+  - target: memory
+    slot: user
+plugins:
+  - name: skill
+    enabled: true
+    description: 技能库入口（manifest 唯一技能能力）：find 列技能目录，read 取某技能 SKILL.md 正文，resource 读附件，exec 执行脚本
+  - name: tool
+    enabled: true
+    description: 工具库入口（manifest 唯一工具能力）：find 列工具索引，read 取完整 schema，run 执行某工具
+  - name: mcp
+    enabled: true
+    description: MCP 工具库入口（manifest 唯一 MCP 能力）：find 列 MCP 工具/服务索引，read 取完整 schema，run 执行某 MCP 工具
+  - name: context
+    enabled: true
+    description: 决策输入节点：内核每轮决策前点名我，产出本次会话上下文消息序列（data['messages']）注入决策者。可注入 SessionStore 读历史。无我时内核降级为最简默认，不报错。
+  - name: prompt
+    enabled: true
+    description: 决策输入节点：内核每轮决策前点名我，产出强化系统指令消息序列（data['messages']）注入决策者。无我时内核降级为最简默认，不报错。
+  - name: memory
+    enabled: true
+    description: 决策输入节点：内核每轮决策前点名我，产出记忆强化消息序列（data['messages']）注入决策者。默认零依赖占位，真实检索由开发者实现。
+  - name: knowledge
+    enabled: true
+    description: 知识库门面（manifest 唯一知识库能力）：find 列知识库索引，read 取元信息，search 按查询召回片段，ingest 加载文件入库，stats 统计，clear 清空。具体知识库是 knowledge_bases/ 目录资源。
+  - name: api
+    enabled: true
+    description: 系统能力节点（agentOS）：agent 调度我获取数据。决定调哪个 API、取哪些数据、怎么组织，产出数据契约。无后端降级为 not_implemented。
+  - name: ui
+    enabled: true
+    description: 系统能力节点（agentOS）：agent 调度我决定渲染什么。决定组件/布局/数据，产出渲染指令。渲染执行在节点内部，agent 不碰像素。无后端降级为 not_implemented。
+  - name: im
+    enabled: true
+    description: 系统能力节点（agentOS）：agent 调度我收发 IM 消息（飞书/微信/Slack/Telegram/钉钉/QQ 入口）。决定发什么消息、发到哪个平台/会话。list_platforms 列出已接线平台。无平台适配器降级为 not_implemented。
+  - name: cli
+    enabled: true
+    description: 系统能力节点（agentOS）：agent 调度我向终端输出文本。send 决定输出什么文本。无输出后端降级为 not_implemented。
+  - name: model
+    enabled: true
+    description: 系统能力节点（agentOS）：agent 调度我管理模型。决定用哪个模型、切换模型、列出可用模型。无模型后端降级为 not_implemented。
