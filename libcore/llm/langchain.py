@@ -23,10 +23,11 @@ class LangChainOllamaBackend:
         model: str,
         base_url: str = "http://localhost:11434",
         temperature: float = 0.2,
+        timeout: float = 180.0,
     ) -> None:
         from langchain_ollama import ChatOllama  # 懒加载：不强制安装 langchain
 
-        self._chat = ChatOllama(model=model, base_url=base_url, temperature=temperature)
+        self._chat = ChatOllama(model=model, base_url=base_url, temperature=temperature, timeout=timeout)
 
     async def chat(
         self,

@@ -326,7 +326,11 @@ class AspectLoader:
             self._modules[name] = module
             register = getattr(module, "register", None)
             if callable(register):
-                register(self.bus)
+                # 横切面条目可带 config 字典（如 budget_guard 的 max_iterations）→
+                # 作为关键字参数传给 register(bus, **config)。无 config 则保持原契约。
+                cfg = e.get("config") or {}
+                register(self.bus, **cfg) if isinstance(cfg, dict) and cfg \
+                    else register(self.bus)
             self._live[name] = []
 
     def _unload(self, name: str) -> None:

@@ -162,9 +162,8 @@ class NeverFinishReason(ReasonProvider):
 async def run_limited(bus: EventBus, reason: ReasonProvider, max_steps: int) -> Scope:
     """带显式上限的最小声调环，专用于演示护栏。"""
     ctx = Scope(goal="guard-test")
-    ctx.max_steps = max_steps
     while not ctx.done:
-        if len(ctx.observations) >= ctx.max_steps:
+        if len(ctx.observations) >= max_steps:
             ctx.done = True
             ctx.observations.append({"error": "迭代上限达成（护栏）"})
             break

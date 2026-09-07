@@ -64,6 +64,8 @@ def _load_defaults() -> None:
     _CONFIG_DEFAULTS["default_backend"] = cfg.get("default_backend") or "ollama"
     _CONFIG_DEFAULTS["default_model"] = cfg.get("default_model") or "qwen3:0.6b"
     _CONFIG_DEFAULTS["temperature"] = cfg.get("temperature", 0.2)
+    _CONFIG_DEFAULTS["max_retries"] = cfg.get("max_retries", 2)
+    _CONFIG_DEFAULTS["max_tokens"] = cfg.get("max_tokens", 4096)
     _CONFIG_DEFAULTS["system_prompt"] = (cfg.get("system_prompt") or _BUILTIN_SYSTEM_PROMPT).strip()
     backends = cfg.get("backends") or {}
     _DEFAULTS.clear()
@@ -94,15 +96,15 @@ def _ensure_defaults() -> None:
         return
     from .ollama import OllamaBackend
 
-    def ollama(base_url: str = "http://localhost:11434") -> Any:
-        return OllamaBackend(base_url)
+    def ollama(base_url: str = "http://localhost:11434", timeout: float = 180.0) -> Any:
+        return OllamaBackend(base_url, timeout=timeout)
 
     register("ollama", ollama)
     try:
         from .langchain import LangChainOllamaBackend
 
-        def langchain_ollama(model: str, base: str = "http://localhost:11434") -> Any:
-            return LangChainOllamaBackend(model=model, base_url=base)
+        def langchain_ollama(model: str, base: str = "http://localhost:11434", timeout: float = 180.0) -> Any:
+            return LangChainOllamaBackend(model=model, base_url=base, timeout=timeout)
 
         register("langchain-ollama", langchain_ollama)
     except Exception:

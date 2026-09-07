@@ -70,6 +70,32 @@ class Agent:
             backend_obj, model=model, system_prompt=system_prompt, temperature=temperature,
         )
 
+    @classmethod
+    def by_profile(cls, role: str, **overrides):
+        """按 agents.yaml 的【角色】装配一个 Agent（模型连接/prompt/能力域全部配置驱动）。
+
+        ``role`` 是 agents.yaml 中 agents 的一个键（如 "worker"、"coder"）。
+        从配置文件取该角色的 backend+model+system_prompt+temperature 交给普通构造流程，
+        再按角色施加能力域过滤（可点名范围）。``overrides`` 可覆盖角色里的任何字段。
+        角色不存在或 backend 未注册 -> 抛 KeyError。
+        """
+        from .agents import load_profiles, scoped
+
+        profile = load_profiles().get(role)
+        if profile is None:
+            raise KeyError(f"未知 agent 角色：{role!r}（agents.yaml 已定义：{sorted(load_profiles())}）")
+        kwargs = {
+            "backend": profile.backend,
+            "model": profile.model,
+            "system_prompt": profile.system_prompt,
+            "temperature": profile.temperature,
+        }
+        kwargs.update({k: v for k, v in overrides.items() if v is not None})
+        self = cls(**kwargs)
+        # 能力域：角色配置了 allow 白名单则把 reason 包上过滤层
+        self._reason = scoped(profile, self._reason)
+        return self
+
     def capability(self, target: str, *, description: str = ""):
         """把任意函数注册成一个"能力"，让模型能点名调用它。
 

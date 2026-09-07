@@ -57,5 +57,6 @@ class BudgetGuardAspect(Aspect):
         self.used = 0
 
 
-def register(bus) -> None:
-    bus.add_aspect(BudgetGuardAspect())
+def register(bus, max_iterations: int = 25) -> None:
+    """注册迭代预算护栏。``max_iterations`` 可由 aspects.yaml 的 ``config`` 覆盖（缺省 25）。"""
+    bus.add_aspect(BudgetGuardAspect(max_iterations=max_iterations))

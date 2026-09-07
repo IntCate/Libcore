@@ -61,11 +61,6 @@ class AgentLoop:
         while not ctx.done:
             ctx.refresh(self.bus.manifest())  # 每轮注入最新可呼叫清单
             await self._prepare_input(ctx)    # 决策前无感注入 prompt/context 强化片段
-            if len(ctx.observations) >= ctx.max_steps:
-                ctx.done = True
-                ctx.observations.append({"error": "迭代上限达成（护栏）"})
-                await self._guard("max_steps", goal)
-                break
             action = await self.reason.decide(ctx)
             # 每轮决策后广播 loop.iteration，供治理横切面（预算/死循环）维护跨轮次状态
             await self.bus.publish(Notice(topic="loop.iteration",

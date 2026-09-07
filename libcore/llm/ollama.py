@@ -18,8 +18,8 @@ from .spi import ChatResult, LLMMsg, ToolCall
 class OllamaBackend:
     """用 ollama 的 /api/chat 原生接口实现 ChatBackend。"""
 
-    def __init__(self, base_url: str = "http://localhost:11434") -> None:
-        self._client = httpx.AsyncClient(base_url=base_url, timeout=180.0)
+    def __init__(self, base_url: str = "http://localhost:11434", timeout: float = 180.0) -> None:
+        self._client = httpx.AsyncClient(base_url=base_url, timeout=timeout)
 
     async def chat(
         self,

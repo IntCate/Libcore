@@ -1,0 +1,60 @@
+# libcore Agent 角色配置（唯一真相源：每个 Agent 用什么模型 + 什么 prompt + 什么能力范围）
+#
+# 分层约定：
+# - 模型【连接】参数（url/key/base_url）只归 libcore/config/llm.yaml 的 `backends:`，
+#   本文件的 `backend` 字段以【引用】方式取 llm.yaml 里的连接键，不重复写连接参数；
+# - 本文件只声明"每个角色"的（backend + model + system_prompt + 能力域 + 护栏），
+#   即"谁用哪个模型 + 大脑指令 + 可点名范围"。
+#
+# schema_version 固定为 1；改动 schema 时递增，由加载器做兼容判断。
+schema_version: 1
+
+# 全局兜底模板：每个 agents 条目可省略的字段默认值。
+defaults:
+  backend: ollama
+  temperature: 0.2
+  input_nodes:
+    - target: context
+      slot: user
+    - target: prompt
+      slot: system
+
+agents:
+  # 内核 agent：只做协作编排（创建子 agent / 派发 / 回收），不做任务推理。
+  kernel:
+    kind: kernel
+    model: qwen3:0.6b
+    system_prompt: |
+      你是 libcore 的内核编排 agent。你只负责拆解任务、创建子 agent、
+      派发子任务并回收结果，不做任务推理、不碰业务语义。
+      children_profile: worker # 创建的子 agent 使用 worker 角色
+
+  # 通用子 agent：接收子任务并执行。
+  worker:
+    kind: worker
+    model: qwen3:0.6b
+    system_prompt: |
+      你是 libcore 的执行型子 agent。接收子任务，调用可用的能力完成它，
+      并把可验证的结果返回给调度你的内核 agent。任务完成后立即结束。
+    temperature: 0.1
+
+  # 编程 agent：专注代码类任务的专属子 agent。
+  coder:
+    kind: worker
+    model: qwen3:0.6b
+    system_prompt: |
+      你是 libcore 的编程 agent。专注分析、编写、修改代码文件。先读后改，
+      用明确的工具完成文件操作，并如实汇报改动。任务完成后立即结束。
+    capabilities:
+      allow:
+        - tools
+        - tool.*
+        - skill
+
+  # 常驻接单内核：7x24 待机，收到协作请求就用独立 reason 执行。
+  # 并发上限 max_concurrency 属框架运行参数，在装配层传给 ResidentKernel（不在此配置）。
+  resident:
+    kind: resident
+    model: qwen3:0.6b
+    system_prompt: |
+      你是 libcore 的常驻协作内核。7x24 待机，收到协作请求就用独立 agent 执行。

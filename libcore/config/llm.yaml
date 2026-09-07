@@ -6,6 +6,9 @@ llm:
   default_backend: ollama
   default_model: qwen3:0.6b
   temperature: 0.2
+  # 调用默认值：LlmReasonProvider 注入 options 的兜底（缺省回退代码内建）
+  max_retries: 2
+  max_tokens: 4096
   # 内置调度员系统指令（唯一真相源）：prompt 输入节点 / Agent / LlmReasonProvider 统一读取，
   # 缺省回退到代码内建兜底文本（见 llm/__init__.py）。
   system_prompt: |
@@ -16,6 +19,8 @@ llm:
   backends:
     ollama:
       base_url: http://localhost:11434
+      timeout: 180
     langchain-ollama:
       base_url: http://localhost:11434
       model: qwen3:0.6b
+      timeout: 180

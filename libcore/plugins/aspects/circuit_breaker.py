@@ -67,5 +67,6 @@ class CircuitBreakerAspect(Aspect):
                 self._open.add(name)
 
 
-def register(bus) -> None:
-    bus.add_aspect(CircuitBreakerAspect())
+def register(bus, threshold: int = FAILURE_THRESHOLD) -> None:
+    """注册熔断护栏。``threshold`` 可由 aspects.yaml 的 ``config`` 覆盖（缺省 3）。"""
+    bus.add_aspect(CircuitBreakerAspect(threshold=threshold))

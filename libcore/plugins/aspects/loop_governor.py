@@ -59,5 +59,6 @@ class LoopGovernorAspect(Aspect):
         self._history.clear()
 
 
-def register(bus) -> None:
-    bus.add_aspect(LoopGovernorAspect())
+def register(bus, threshold: int = 3) -> None:
+    """注册循环治理护栏。``threshold`` 可由 aspects.yaml 的 ``config`` 覆盖（缺省 3）。"""
+    bus.add_aspect(LoopGovernorAspect(threshold=threshold))

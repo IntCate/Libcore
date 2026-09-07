@@ -89,10 +89,20 @@ class LlmReasonProvider(ReasonProvider):
                 LLMMsg("system", self._system),
                 LLMMsg("user", self._prompt(ctx)),
             ]
+        # 调用默认值：max_retries / max_tokens 从 llm.yaml 顶层读取（缺省回退代码内建）
+        from ...llm import defaults as _llm_defaults
+
+        _d = _llm_defaults()
+        options = {
+            "tools": tools,
+            "temperature": self._temperature,
+            "max_retries": _d.get("max_retries", 2),
+            "max_tokens": _d.get("max_tokens", 4096),
+        }
         result = await self._backend.chat(
             model=self._model,
             messages=messages,
-            options={"tools": tools, "temperature": self._temperature},
+            options=options,
         )
 
         # 3) 翻译成答题卡：模型选中一个工具调用 → 就是"下一步点名谁"

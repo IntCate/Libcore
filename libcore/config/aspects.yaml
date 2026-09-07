@@ -7,13 +7,20 @@ aspects:
     enabled: true
   - name: circuit_breaker
     enabled: true
+    config:
+      threshold: 3
   - name: sandbox
     enabled: true
   # 编排治理：迭代预算 + 死循环检测（匹配 loop.iteration 广播）
+  # max_iterations 为帧迭代上限护栏，经 config 传入（缺省 25）
   - name: budget_guard
     enabled: true
+    config:
+      max_iterations: 25
   - name: loop_governor
     enabled: true
+    config:
+      threshold: 3
   # 观察类：循环追踪记录（匹配 loop.iteration 广播）
   - name: trace_recorder
     enabled: true

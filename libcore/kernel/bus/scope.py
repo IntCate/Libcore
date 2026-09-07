@@ -18,7 +18,6 @@ class Scope:
     """一次会话的作用域。构造时产生根因果 id。"""
 
     goal: Any
-    max_steps: int = 30
     done: bool = False
     session_id: Optional[str] = None
 
