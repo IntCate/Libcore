@@ -71,7 +71,7 @@ LLM 未注入/调用异常 → 降级统计摘要（辅助任务可降级，不�
 from libcore.plugins.capabilities import memory
 memory.register(bus)   # 默认内存后端
 # 或注入自定义后端
-memory.register(bus, memory=my_backend)
+memory.register(bus, backend=my_backend)
 ```
 
 检索/存储异常不致命：降级为空记忆（无感原则）。

@@ -65,10 +65,10 @@ collector = build_context(
 from libcore.plugins.capabilities import context
 context.register(bus)   # 默认从 payload 采集
 # 或注入自定义采集器 + SessionStore
-context.register(bus, collector=collector, store=session_store)
+context.register(bus, collector=collector, backend=session_store)
 ```
 
-当 payload 带 `session_id` 且注入 `store` 时，优先从 SessionStore 读历史；否则回退到 `payload["session_messages"]`。
+当 payload 带 `session_id` 且注入 `backend` 时，优先从 SessionStore 读历史；否则回退到 `payload["session_messages"]`。
 
 ## 7. 代码位置
 

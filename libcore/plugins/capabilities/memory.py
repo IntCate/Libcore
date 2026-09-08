@@ -7,20 +7,19 @@
 中文二元切分关键词检索 + 会话作用域过滤），保证"零配置可裸跑、有记忆可用"（单核最小可运行 + 有是强化）。
 
 装配（零耦合，可拆卸）：
-- ``register(bus)`` 默认挂内存存储；``register(bus, memory=...)`` 可注入自定义后端
+- ``register(bus)`` 默认挂内存存储；``register(bus, backend=...)`` 可注入自定义后端
   （如包装旧 MemoryRetrieverHybrid 或 SQLite/向量存储），签名见 ``MemoryBackend``；
 - 检索/存储异常不致命：降级为空记忆（对齐无感原则）。
 """
 from __future__ import annotations
 
-import re
-import time
-import uuid
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional
 
 from libcore.kernel.bus import Dispatch, CapabilityResult
 from libcore.llm.spi import LLMMsg
+from libcore.storage.contracts import MemoryRecord
+from libcore.storage.memory_store import MemoryBackend, _keywords
 
 DESCRIPTION = (
     "决策输入节点：内核每轮决策前点名我，产出跨会话记忆消息序列（data['messages']）注入决策者。"
@@ -29,18 +28,6 @@ DESCRIPTION = (
 
 
 # ── 记忆契约（零依赖，轻量）─────────────────────────────────────────────
-
-@dataclass
-class MemoryRecord:
-    """单条记忆记录。``tags``/``importance`` 预留排序与关联。"""
-    id: str = field(default_factory=lambda: f"mem_{uuid.uuid4().hex[:16]}")
-    session_id: str = ""       # 归属会话；空 = 全局记忆
-    content: str = ""          # 记忆正文（偏好/事实/摘要）
-    kind: str = "fact"         # "summary" | "fact" | "skill_ref"
-    importance: float = 0.5
-    tags: List[str] = field(default_factory=list)
-    created_at: float = field(default_factory=time.time)
-
 
 @dataclass
 class InMemoryMemoryStore:
@@ -65,29 +52,7 @@ class InMemoryMemoryStore:
         return [r for _h, _i, r in scored[:limit]]
 
 
-def _keywords(query: str) -> List[str]:
-    """把查询拆成关键词：英文按词，中文按二元切分（对齐旧 memory_episodic_fts）。"""
-    q = (query or "").lower()
-    kws = re.findall(r"[a-z0-9]+", q)
-    for chunk in re.findall(r"[\u4e00-\u9fff]+", q):
-        if len(chunk) == 1:
-            kws.append(chunk)
-        else:
-            kws.extend(chunk[i : i + 2] for i in range(len(chunk) - 1))
-    return [w for w in kws if w]
-
-
 # ── 对外记忆后端（可注入）───────────────────────────────────────────────
-
-class MemoryBackend:
-    """记忆后端接口：``retrieve(query, session_id, limit) -> list[str]``（已排序命中文本）。
-
-    开发者可用自定义后端（如包装旧 MemoryRetrieverHybrid / SQLite / 向量库），
-    替换默认内存实现。检索异常由上层捕获降级为空记忆。
-    """
-    def retrieve(self, query: str, *, session_id: str, limit: int = 5) -> List[str]:
-        raise NotImplementedError
-
 
 class DefaultMemoryBackend(MemoryBackend):
     """默认记忆后端：包装进程内 ``InMemoryMemoryStore``。
@@ -258,19 +223,19 @@ _MEMORY_DEFAULT = DefaultMemoryBackend()
 
 # ── register：挂 memory 输入节点（默认内存后端）────────────────────────
 
-def register(bus, memory: Optional[MemoryBackend] = None) -> None:
+def register(bus, backend: Optional[MemoryBackend] = None) -> None:
     """注册 memory 输入节点。
 
     Args:
-        memory: 记忆后端（默认 ``DefaultMemoryBackend``）。自定义后端须实现 ``retrieve``。
+        backend: 记忆后端（默认 ``DefaultMemoryBackend``）。自定义后端须实现 ``retrieve``。
     """
-    backend = memory or _MEMORY_DEFAULT
+    memory = backend or _MEMORY_DEFAULT
 
     def handle(d: Dispatch) -> CapabilityResult:
         query = str(d.payload.get("goal") or "")
         session_id = str(d.payload.get("session_id") or "")
         try:
-            hits = backend.retrieve(query, session_id=session_id, limit=5) or []
+            hits = memory.retrieve(query, session_id=session_id, limit=5) or []
         except Exception:
             hits = []  # 检索异常不致命：降级为空记忆（无感原则）
         text = ""

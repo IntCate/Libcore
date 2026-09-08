@@ -26,12 +26,16 @@ class AgentLoop:
     """
 
     def __init__(self, bus: EventBus, reason: ReasonProvider,
-                 input_nodes: Optional[list] = None) -> None:
+                 input_nodes: Optional[list] = None,
+                 wait_interval: float = 0.02) -> None:
         self.bus = bus
         self.reason = reason
         # 决策输入节点：配置驱动（含 slot）。input_nodes 元素可为 str（默认 slot=user）
         # 或 dict（{"target":..., "slot":...}）。默认退化为内置 ("context","prompt")。
         self._input_nodes = self._normalize_input_nodes(input_nodes)
+        # wait 轮询间隔（秒）：决策者返回 wait 时，调度环稍等后重试。
+        # 内核不读配置，只接受构造参数；装配层从配置文件读取后传入。
+        self._wait_interval = wait_interval
 
     @staticmethod
     def _normalize_input_nodes(input_nodes: Optional[list]) -> List[dict]:
@@ -72,7 +76,7 @@ class AgentLoop:
                                               payload={"goal": goal}))
                 break
             if action.wait:  # 本轮无目标，稍等后回到轮顶刷新清单（超时治理由 wait_timeout 横切面承担）
-                await asyncio.sleep(0.02)
+                await asyncio.sleep(self._wait_interval)
                 continue
             result = await self.bus.dispatch(Dispatch(
                 target=action.target,

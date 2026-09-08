@@ -6,6 +6,8 @@
 """
 from __future__ import annotations
 
+import time
+import uuid
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
@@ -55,3 +57,25 @@ class CheckpointRecord:
     state: Dict[str, Any] = field(default_factory=dict)
     updated_at: str = ""
     metadata: Dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
+class SessionRecord:
+    """会话数据本体（轻量，供插件内部使用）。"""
+    id: str
+    messages: List[dict] = field(default_factory=list)   # [{role, content}, ...]
+    graph_state: Optional[dict] = None
+    step_count: int = 0
+    metadata: Dict[str, object] = field(default_factory=dict)
+
+
+@dataclass
+class MemoryRecord:
+    """单条记忆记录。``tags``/``importance`` 预留排序与关联。"""
+    id: str = field(default_factory=lambda: f"mem_{uuid.uuid4().hex[:16]}")
+    session_id: str = ""       # 归属会话；空 = 全局记忆
+    content: str = ""          # 记忆正文（偏好/事实/摘要）
+    kind: str = "fact"         # "summary" | "fact" | "skill_ref"
+    importance: float = 0.5
+    tags: List[str] = field(default_factory=list)
+    created_at: float = field(default_factory=time.time)

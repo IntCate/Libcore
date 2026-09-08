@@ -8,10 +8,35 @@ from __future__ import annotations
 
 import mimetypes
 import os
+from abc import ABC, abstractmethod
 from typing import Any, Dict
 
 
-class LocalFileStore:
+class FileStore(ABC):
+    """文件存储契约：按规范化相对路径读写二进制文件。
+
+    实现方（本地目录 / S3 / OSS / 远程）负责把 key 映射到自己的存储介质，
+    并保证路径穿越防护（key 不得越出 base 作用域）。
+    """
+
+    @abstractmethod
+    def write(self, rel_path: str, data: bytes) -> str:
+        """写入文件，返回规范化 key。"""
+
+    @abstractmethod
+    def read(self, key: str) -> bytes:
+        """按 key 读回文件内容。"""
+
+    @abstractmethod
+    def delete(self, key: str) -> None:
+        """按 key 删除文件。"""
+
+    @abstractmethod
+    def stat(self, key: str) -> Dict[str, Any]:
+        """按 key 返回文件元信息（size / mtime / content_type）。"""
+
+
+class LocalFileStore(FileStore):
     """本地目录文件存储。"""
 
     def __init__(self, base_dir: str) -> None:

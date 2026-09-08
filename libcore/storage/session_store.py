@@ -11,7 +11,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from typing import List, Optional
 
-from libcore.storage.contracts import AgentSessionRecord
+from libcore.storage.contracts import AgentSessionRecord, MessageRecord, SessionRecord
 
 
 class SessionStore(ABC):
@@ -19,6 +19,9 @@ class SessionStore(ABC):
 
     会话是完整实体（内嵌消息列表）。实现方负责把 dataclass 转成自己的
     存储格式（SQL 行 / JSON 文件 / 远程 API），并转回 dataclass。
+
+    除完整实体读写外，还提供轻量便捷方法（get_history / append_message /
+    save_session），供 session / context 插件按需取历史消息，无需感知完整实体。
     """
 
     @abstractmethod
@@ -36,3 +39,38 @@ class SessionStore(ABC):
     @abstractmethod
     def delete_agent_session(self, session_id: str) -> None:
         """删除会话及其消息。"""
+
+    # ── 轻量便捷方法（默认基于完整实体实现，实现方可按需覆盖）──────────
+
+    def get_history(self, session_id: str) -> List[dict]:
+        """读回会话历史消息（list[{role, content}]）；无会话返回空列表。"""
+        session = self.get_agent_session(session_id)
+        if session is None:
+            return []
+        return [
+            {"role": m.role, "content": m.content}
+            for m in session.messages if m.content
+        ]
+
+    def append_message(self, session_id: str, role: str, content: str) -> None:
+        """向会话追加一条消息。"""
+        session = self.get_agent_session(session_id)
+        if session is None:
+            session = AgentSessionRecord(id=session_id, chat_id=session_id)
+        session.messages.append(MessageRecord(
+            id=f"{session_id}-{len(session.messages)}", chat_id=session_id,
+            role=role, content=content,
+        ))
+        self.save_agent_session(session)
+
+    def save_session(self, session: SessionRecord) -> None:
+        """保存轻量会话（转成完整实体后落库）。"""
+        self.save_agent_session(AgentSessionRecord(
+            id=session.id, chat_id=session.id,
+            graph_state=session.graph_state, step_count=session.step_count,
+            metadata=session.metadata,
+            messages=[MessageRecord(
+                id=f"{session.id}-{i}", chat_id=session.id,
+                role=m.get("role", "user"), content=m.get("content", ""),
+            ) for i, m in enumerate(session.messages)],
+        ))

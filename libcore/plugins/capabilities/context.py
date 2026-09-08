@@ -17,10 +17,13 @@
 """
 from __future__ import annotations
 
+import logging
 from typing import Callable, List, Optional
 
-from libcore.kernel.bus import Dispatch, CapabilityResult
+from libcore.kernel.bus import Dispatch, CapabilityResult, Notice
 from libcore.llm.spi import LLMMsg
+
+_logger = logging.getLogger("libcore.capability.context")
 
 DESCRIPTION = (
     "决策输入节点：内核每轮决策前点名我，产出本次会话上下文消息序列（data['messages']）注入决策者。"
@@ -164,6 +167,22 @@ def build_context(
     return gather
 
 
+def _normalize_goal(goal) -> str:
+    """规范化任务目标为干净文本（符合行业命名：goal 是纯文本指令）。
+
+    - dict 包裹（如 ``{"goal": "..."}``）→ 提取 ``goal["goal"]``；
+    - 纯字符串 → 原样返回；
+    - 其他 → str() 兜底。
+    避免把 ``{'goal': ...}`` 嵌套冗余拼进注入文本。
+    """
+    if isinstance(goal, dict):
+        inner = goal.get("goal")
+        if isinstance(inner, str) and inner.strip():
+            return inner.strip()
+        return str(goal).strip()
+    return str(goal).strip()
+
+
 def _default_collector(d: Dispatch) -> str:
     """默认采集器：上传/RAG 素材 + 任务目标（不含历史，历史单独转消息序列）。"""
     parts: List[str] = []
@@ -171,7 +190,7 @@ def _default_collector(d: Dispatch) -> str:
         text = c(d)
         if isinstance(text, str) and text.strip():
             parts.append(text.strip())
-    goal = d.payload.get("goal")
+    goal = _normalize_goal(d.payload.get("goal"))
     if goal:
         parts.append(f"当前任务目标：{goal}")
     return "\n\n".join(parts)
@@ -179,23 +198,41 @@ def _default_collector(d: Dispatch) -> str:
 
 # ── register：挂 context 输入节点（默认从 payload 采集）───────────────
 
-def register(bus, collector: Optional[Collector] = None, *, store=None) -> None:
+def register(bus, collector: Optional[Collector] = None, *, backend=None):
     """注册 context 输入节点。
 
     Args:
         collector: 可传装配好的采集器；缺省从 payload 采集。
-        store: 可注入 SessionStore（含 ``get_agent_session(session_id)`` 返回
-            ``AgentSessionRecord``，其 ``messages`` 为 ``List[MessageRecord]``）。
-            当 payload 带 ``session_id`` 时，优先从 store 读历史；否则回退到
-            ``payload["session_messages"]``。
+        backend: 可注入会话存储（实现 ``SessionStore`` 契约，含
+            ``get_history(session_id)`` 返回 ``list[{role, content}]``）。
+            缺省用 context 内置的临时历史（一个纯数组，不区分会话）；
+            注入后**替换**内置历史——内部数组清空、append 禁用，历史完全交给
+            backend（按会话隔离 + 可持久化）。会话数据本体由 session 插件收敛，
+            context 不再直接碰 store（解耦）。
+
+    Returns:
+        ``append(role, content)`` 写入口：向 context 内置临时历史追加一条消息。
+        仅当未注入 backend 时有效；注入后 append 为 no-op（历史由
+        backend 管理，避免内部数组泄漏/混淆）。
     """
     # 素材采集器（上传/RAG/任务目标），不含历史——历史单独转成消息序列，避免重复注入
     gather = collector or _default_collector
+    # context 内置临时历史：纯数组（不区分会话，多个任务混在一起）
+    _history: list = []
+    # 注入 backend 时替换内置历史：清空数组 + 禁用 append
+    _has_session = backend is not None
+    if _has_session:
+        _history = []
 
-    def handle(d: Dispatch) -> CapabilityResult:
+    def append(role: str, content: str) -> None:
+        if _has_session:
+            return  # 有 session：历史由 backend 管理，内部数组禁用
+        _history.append({"role": role, "content": content})
+
+    async def handle(d: Dispatch) -> CapabilityResult:
         # 历史消息原样转成消息序列（保留 user/assistant 交替时序）
         msgs: List[LLMMsg] = []
-        history = _load_history(d, store)
+        history = await _load_history(d, backend, _history, bus)
         # 裁剪策略由配置驱动（payload["trim"]），决定"模型看会话的哪些内容"；
         # 无配置时用默认（保留最近 10 条，含最后一条 user）
         trim = d.payload.get("trim") or {}
@@ -219,24 +256,37 @@ def register(bus, collector: Optional[Collector] = None, *, store=None) -> None:
         "description": DESCRIPTION,
         "ops": ["run"],
     })
+    return append
 
 
-def _load_history(d: Dispatch, store) -> List[dict]:
-    """从 SessionStore 或 payload 读取历史消息（统一为 list[{role, content}]）。
+async def _load_history(d: Dispatch, backend, default_history, bus) -> List[dict]:
+    """从历史来源或 payload 读取历史消息（统一为 list[{role, content}]）。
 
-    优先：payload 带 session_id 且注入 store → 从 store 读 AgentSessionRecord.messages。
+    优先：注入 backend 且带 session_id → 从后端按会话读历史。
+    其次：context 内置临时历史（纯数组，不区分会话）。
     回退：payload["session_messages"]（调用方喂）。
+    存储异常不致命：降级为内置历史（无感原则），但广播 ``context.store_error``
+    让故障可观测（不静默吞错，符合"系统运行不漏"）。
     """
     session_id = d.payload.get("session_id")
-    if session_id and store is not None:
+    if backend is not None and session_id:
         try:
-            session = store.get_agent_session(session_id)
-            if session is not None and session.messages:
+            history = backend.get_history(session_id) or []
+            if history:
                 return [
-                    {"role": m.role, "content": m.content}
-                    for m in session.messages
-                    if getattr(m, "content", None)
+                    {"role": m.get("role", "user"), "content": m.get("content", "")}
+                    for m in history
+                    if isinstance(m, dict) and m.get("content")
                 ]
-        except Exception:
-            pass  # 存储异常不致命：降级为 payload 历史（无感原则）
+        except Exception as e:  # noqa: BLE001 存储异常不致命，但需可观测
+            _logger.warning("context session read failed: %s", e)
+            try:
+                await bus.publish(Notice(
+                    topic="context.store_error",
+                    payload={"session_id": session_id, "error": str(e)},
+                ))
+            except Exception:  # noqa: BLE001 广播失败不致命
+                pass
+    if default_history:
+        return list(default_history)
     return d.payload.get("session_messages") or []

@@ -61,3 +61,24 @@ def test_bootstrap_resident_accepts_explicit_input_nodes():
         input_nodes=[{"target": "context", "slot": "user"}],
     )
     assert kernel.resident is not None
+
+
+def test_agentloop_accepts_wait_interval_param():
+    """AgentLoop 应接受 wait_interval 构造参数（内核不读配置，只接受参数）。"""
+    loop = AgentLoop(EventBus(), None, wait_interval=0.5)
+    assert loop._wait_interval == 0.5
+
+
+def test_agentloop_wait_interval_default():
+    """不传 wait_interval 时，内核用内置默认 0.02 兜底（不依赖配置）。"""
+    loop = AgentLoop(EventBus(), None)
+    assert loop._wait_interval == 0.02
+
+
+def test_bootstrap_accepts_wait_interval():
+    """Kernel.bootstrap 应透传 wait_interval 给 AgentLoop。"""
+    kernel = Kernel.bootstrap(
+        targets={"echo": _echo_handler},
+        wait_interval=0.5,
+    )
+    assert kernel.loop._wait_interval == 0.5

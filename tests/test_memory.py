@@ -4,7 +4,7 @@ bus.dispatch() 是异步的，用 asyncio.run() 包裹（不依赖 pytest-asynci
 """
 from __future__ import annotations
 
-from libcore.plugins.capabilities.memory import MemoryRecord
+from libcore.storage.contracts import MemoryRecord
 from libcore.storage.sqlite_memory_store import SqliteMemoryStore
 
 

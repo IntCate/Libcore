@@ -113,7 +113,8 @@ class Agent:
 
     def run(self, goal: str):
         """跑一个任务，返回调度环的 Scope（含 observations / done）。"""
-        loop = AgentLoop(self._bus, self._reason, input_nodes=self._input_nodes())
+        loop = AgentLoop(self._bus, self._reason, input_nodes=self._input_nodes(),
+                         wait_interval=self._wait_interval())
         return asyncio.run(loop.run({"goal": goal}))
 
     def serve(self, *, max_concurrency: int = 4, input_nodes=None):
@@ -173,3 +174,9 @@ class Agent:
         nodes = CapabilityLoader.load_input_nodes()
         return nodes or [{"target": "context", "slot": "user"},
                          {"target": "prompt", "slot": "system"}]
+
+    @staticmethod
+    def _wait_interval() -> float:
+        """从 capabilities.yaml 读取 wait 轮询间隔（秒）；无配置则用默认 0.02。"""
+        from .plugins.loader import CapabilityLoader
+        return CapabilityLoader.load_wait_interval()

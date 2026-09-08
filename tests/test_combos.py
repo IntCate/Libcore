@@ -202,7 +202,7 @@ class TestMemoryAgentLoop:
         # 预置一条记忆
         backend = memory_cap.DefaultMemoryBackend()
         backend.remember("用户偏好：喜欢用 Python 写脚本", session_id="s1", tags=["python"])
-        memory_cap.register(bus, memory=backend)
+        memory_cap.register(bus, backend=backend)
         # echo handler 记录收到的 goal
         seen = {}
 
@@ -246,7 +246,7 @@ class TestKnowledgeAgentLoop:
         store = knowledge_cap.InMemoryKnowledgeStore()
         store.upsert("libcore", [KBDocument(text="libcore 是 AgentOS 框架，支持插件化能力装配",
                                             metadata={"id": "d1"})])
-        knowledge_cap.register(bus, store=store)
+        knowledge_cap.register(bus, backend=store)
         loop = AgentLoop(bus, KnowledgeReason())
         ctx = asyncio.run(loop.run("AgentOS 是什么", session_id="s1"))
         assert ctx.done, "任务应完成"

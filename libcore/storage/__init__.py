@@ -6,21 +6,37 @@
 from libcore.storage.contracts import (
     AgentSessionRecord,
     CheckpointRecord,
+    MemoryRecord,
     MessageRecord,
+    SessionRecord,
 )
+from libcore.storage.memory_store import MemoryBackend
 from libcore.storage.session_store import SessionStore
 from libcore.storage.sqlite_store import SqliteDataStore
 from libcore.storage.sqlite_memory_store import SqliteMemoryStore
-from libcore.storage.state_store import SqliteStateStore
-from libcore.storage.file_store import LocalFileStore
+from libcore.storage.state_store import SqliteStateStore, StateStore
+from libcore.storage.file_store import FileStore, LocalFileStore
+from libcore.storage.json_file_store import (
+    JsonFileMemoryBackend,
+    JsonFileSessionStore,
+    JsonFileStateStore,
+)
 
 __all__ = [
     "AgentSessionRecord",
     "CheckpointRecord",
+    "MemoryRecord",
     "MessageRecord",
+    "SessionRecord",
+    "MemoryBackend",
     "SessionStore",
+    "StateStore",
+    "FileStore",
     "SqliteDataStore",
     "SqliteMemoryStore",
     "SqliteStateStore",
     "LocalFileStore",
+    "JsonFileSessionStore",
+    "JsonFileStateStore",
+    "JsonFileMemoryBackend",
 ]

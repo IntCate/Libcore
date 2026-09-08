@@ -16,7 +16,8 @@ import os
 import sqlite3
 from typing import Any, Dict, List, Optional
 
-from libcore.plugins.capabilities.memory import MemoryRecord, _keywords
+from libcore.storage.contracts import MemoryRecord
+from libcore.storage.memory_store import MemoryBackend, _keywords
 
 
 def _dumps(value: Any) -> str:

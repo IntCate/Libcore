@@ -137,7 +137,7 @@ class KBDocument:
 from libcore.plugins.capabilities import knowledge
 knowledge.register(bus)              # 默认零依赖内存后端 + 默认知识库目录
 # 或注入自定义后端（Qdrant / Milvus / 真实向量库 / Hybrid）
-knowledge.register(bus, store=my_store)
+knowledge.register(bus, backend=my_store)
 ```
 
 检索/入库异常不致命：降级为空结果（无感原则）。
@@ -193,3 +193,4 @@ await bus.dispatch(Dispatch(target="knowledge", op="ingest",
 
 - `libcore/storage/`：存储纯库（`SessionStore` / `sqlite_store` 等介质实现）
 
+<br />

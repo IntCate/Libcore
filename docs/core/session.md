@@ -61,11 +61,11 @@ class SessionStore(ABC):
 
 ## 5. 与 Context 的关系
 
-context 输入节点依赖 SessionStore 契约：当 payload 带 `session_id` 且注入 `store` 时，优先从 store 读历史；否则回退到 `payload["session_messages"]`。
+context 输入节点依赖 SessionStore 契约：当 payload 带 `session_id` 且注入 `backend` 时，优先从 backend 读历史；否则回退到 `payload["session_messages"]`。
 
 ```python
 from libcore.plugins.capabilities import context
-context.register(bus, store=session_store)
+context.register(bus, backend=session_store)
 ```
 
 ## 6. 存储实现

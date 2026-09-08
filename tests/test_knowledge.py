@@ -35,7 +35,7 @@ def _make_kb_root(tmp_path: Path) -> Path:
 
 class TestKnowledgeCapability:
     def test_find_lists_knowledge_bases(self, bus, tmp_path):
-        kb_cap.register(bus, store=kb_cap.InMemoryKnowledgeStore())
+        kb_cap.register(bus, backend=kb_cap.InMemoryKnowledgeStore())
         # 用临时目录替换默认知识库目录
         root = _make_kb_root(tmp_path)
         engine = kb_cap.KnowledgeEngine(kb_root=root)
@@ -102,7 +102,7 @@ class TestKnowledgeCapability:
         assert st2.data["count"] == 0
 
     def test_register_dispatch_ops(self, bus, tmp_path):
-        kb_cap.register(bus, store=kb_cap.InMemoryKnowledgeStore())
+        kb_cap.register(bus, backend=kb_cap.InMemoryKnowledgeStore())
         # 用临时目录替换默认知识库目录
         root = _make_kb_root(tmp_path)
         engine = kb_cap.KnowledgeEngine(kb_root=root)

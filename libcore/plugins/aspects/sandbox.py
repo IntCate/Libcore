@@ -159,7 +159,7 @@ class SandboxExecutor:
 
 # 受限 skill 执行器模板：在子进程里**先屏蔽**危险模块与 builtins，再加载脚本并调用 run(args)
 _SKILL_RUNNER_TEMPLATE = textwrap.dedent("""\
-    import builtins as _b, importlib as _i, sys as _s
+    import builtins as _b, importlib as _i, importlib.util as _iu, sys as _s
     import json as _json
 
     # 屏蔽时机前移：在加载脚本**之前**屏蔽危险模块，
@@ -170,8 +170,8 @@ _SKILL_RUNNER_TEMPLATE = textwrap.dedent("""\
                "multiprocessing", "pty", "signal"):
         _s.modules[_m] = None
 
-    _spec = _i.util.spec_from_file_location("_sandbox_skill", {script_path!r})
-    _mod = _i.util.module_from_spec(_spec)
+    _spec = _iu.spec_from_file_location("_sandbox_skill", {script_path!r})
+    _mod = _iu.module_from_spec(_spec)
     _s.modules["_sandbox_skill"] = _mod
     _spec.loader.exec_module(_mod)
     _run = getattr(_mod, "run", None)

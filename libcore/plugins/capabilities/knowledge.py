@@ -256,14 +256,14 @@ class KnowledgeEngine:
 
 # ---- 总线装配 ----
 
-def register(bus, store: Optional[KnowledgeStore] = None) -> None:
+def register(bus, backend: Optional[KnowledgeStore] = None) -> None:
     """注册 knowledge 门面。
 
     Args:
-        store: 知识库存储后端（默认 ``InMemoryKnowledgeStore``）。自定义后端须实现
+        backend: 知识库存储后端（默认 ``InMemoryKnowledgeStore``）。自定义后端须实现
             upsert/search/stats/clear。
     """
-    engine = KnowledgeEngine(store=store)
+    engine = KnowledgeEngine(store=backend)
 
     def handle(d: Dispatch) -> CapabilityResult:
         op = d.op or (d.payload.get("op") or "")

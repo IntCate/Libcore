@@ -59,6 +59,7 @@ class Kernel:
         aspects: Iterable[Aspect] = (),
         reason: ReasonProvider | None = None,
         input_nodes: Optional[list] = None,
+        wait_interval: float = 0.02,
     ) -> "Kernel":
         """便捷装配：把 ``{target: handler}`` 能力与护栏组装成可用内核。
 
@@ -67,6 +68,8 @@ class Kernel:
 
         ``input_nodes`` 为决策输入节点（含 slot），由装配层传入；缺省 None 时
         AgentLoop 退化为内置默认（context/prompt）。内核不读插件配置，保持独立。
+
+        ``wait_interval`` 为 wait 轮询间隔（秒），由装配层传入；缺省 0.02。
         """
         bus = EventBus()
         for target, spec in targets.items():
@@ -74,7 +77,8 @@ class Kernel:
             bus.on(target, handler, meta=meta)
         for aspect in aspects:
             bus.add_aspect(aspect)
-        loop = AgentLoop(bus, reason, input_nodes=input_nodes)
+        loop = AgentLoop(bus, reason, input_nodes=input_nodes,
+                         wait_interval=wait_interval)
         return cls(bus, loop)
 
     @classmethod
@@ -86,6 +90,7 @@ class Kernel:
         reason: ReasonProvider | None = None,
         max_concurrency: int = 4,
         input_nodes: Optional[list] = None,
+        wait_interval: float = 0.02,
     ) -> "Kernel":
         """便捷装配一个可 7×24 常驻运作的协作内核。
 
@@ -94,7 +99,7 @@ class Kernel:
         ``shutdown()`` 优雅关闭。
         """
         kernel = cls.bootstrap(targets=targets, aspects=aspects, reason=reason,
-                               input_nodes=input_nodes)
+                               input_nodes=input_nodes, wait_interval=wait_interval)
         kernel.resident = ResidentKernel(
             kernel.bus,
             kernel.loop.reason,

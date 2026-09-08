@@ -112,8 +112,8 @@ class LoggingAspect(Aspect):
                 tail = f"fail err={_clip(_serialize(result.error) or '')} {delta_ms}ms"
             else:
                 tail = f"{'ok' if ok else 'fail'} {delta_ms}ms"
-            logger.info("after  %-8s %s -> %s", kind,
-                        _summarize(signal), tail)
+            logger.info("after  %-8s %s -> %s cid=%s", kind,
+                        _summarize(signal), tail, signal.cid.value[:8])
         else:
             ok = True
             if isinstance(result, CapabilityResult):

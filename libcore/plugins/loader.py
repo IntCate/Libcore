@@ -202,6 +202,21 @@ class CapabilityLoader:
                             "trim": item.get("trim")})
         return out
 
+    @staticmethod
+    def load_wait_interval(config_path=None) -> float:
+        """从配置文件读取 wait 轮询间隔（秒）；缺省 0.02。
+
+        与 ``load_input_nodes`` 同构：装配层读取后传给 AgentLoop，
+        内核不读配置，只接受构造参数。
+        """
+        import yaml
+        path = pathlib.Path(config_path) if config_path is not None \
+            else CapabilityLoader._config_root() / "capabilities.yaml"
+        if not path.exists():
+            return 0.02
+        cfg = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+        return float(cfg.get("wait_interval", 0.02))
+
     def generate_yaml(self) -> str:
         """把目录里所有插件按配置格式生成文本（enabled:true + 默认描述）。"""
         lines = ["# libcore 插件配置（唯一真相源）",

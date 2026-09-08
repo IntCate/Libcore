@@ -24,6 +24,10 @@ input_nodes:
     slot: system
   - target: memory
     slot: user
+
+# 内核 wait 轮询间隔（秒）：决策者返回 wait 时，调度环稍等后重试。
+# 由装配层读取后传给 AgentLoop（内核不读配置，只接受构造参数）。
+wait_interval: 0.02
 plugins:
   - name: skill
     enabled: true
