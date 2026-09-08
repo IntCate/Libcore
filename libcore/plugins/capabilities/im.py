@@ -104,7 +104,14 @@ def register(bus, registry: Optional[IMRegistry] = None, channels=None) -> None:
             )
         except Exception as e:
             return CapabilityResult(ok=False, data={}, error=f"im {op} 失败: {e}")
-        return CapabilityResult(ok=True, data={"status": "sent" if op == "send" else "ok", **result})
+        # 暴露内部适配器调用细节给 tracing/logging（不发布到总线，仅随结果上抛）：
+        # 平台适配器是开放组件，不走总线，但门面把"内部路由到哪个平台、什么操作"
+        # 塞进 result.data，使 tracing 能还原到具体平台这一层，而不只是 im 门面。
+        return CapabilityResult(ok=True, data={
+            "status": "sent" if op == "send" else "ok",
+            **result,
+            "_internal": {"platform": platform, "adapter_op": op},
+        })
 
     bus.on("im", handle, meta={
         "description": DESCRIPTION,

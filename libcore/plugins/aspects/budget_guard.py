@@ -17,9 +17,10 @@ from libcore.llm.spi import LLMMsg
 class BudgetGuardAspect(Aspect):
     """迭代预算护栏：三级压力注入 + 100% 熔断。"""
 
-    def __init__(self, max_iterations: int = 25):
+    def __init__(self, max_iterations: int = 25, bus=None):
         self.max = max_iterations
         self.used = 0
+        self._bus = bus
 
     def matches(self, signal) -> bool:
         return isinstance(signal, Notice) and signal.topic == "loop.iteration"
@@ -34,6 +35,12 @@ class BudgetGuardAspect(Aspect):
         if pct >= 1.0:
             ctx.done = True
             ctx.observations.append({"error": f"已达到最大迭代次数（{self.max}），自动停止。"})
+            # 广播 loop.guard，让日志横切面与订阅者都能感知"预算熔断"（与 wait_timeout 护栏一致）
+            if self._bus is not None:
+                await self._bus.publish(Notice(
+                    topic="loop.guard",
+                    payload={"reason": "budget_guard", "goal": ctx.goal},
+                ))
             return None
 
         pressure = None
@@ -59,4 +66,4 @@ class BudgetGuardAspect(Aspect):
 
 def register(bus, max_iterations: int = 25) -> None:
     """注册迭代预算护栏。``max_iterations`` 可由 aspects.yaml 的 ``config`` 覆盖（缺省 25）。"""
-    bus.add_aspect(BudgetGuardAspect(max_iterations=max_iterations))
+    bus.add_aspect(BudgetGuardAspect(max_iterations=max_iterations, bus=bus))

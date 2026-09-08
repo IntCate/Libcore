@@ -3,8 +3,13 @@
 信号层日志：能力调用（Dispatch）与系统广播（Notice）都流经总线，
 由本 aspect 在 before/after 统一记录，插件自身无需写任何 log。
 
-before 记录"目标 + 操作 + 工具/技能名 + 参数摘要"，after 记录执行结果概要，
-从而能仅凭日志还原内核每一步在调度谁、用什么参数、得到什么结果。
+**定位：过程日志（process log）**，与审计（audit）严格分工：
+- 日志记"**过程**"：调用链、参数摘要、耗时、中间态，供排障诊断；
+- 审计记"**结果**"：谁、何时、做了什么、结果，供合规追责；
+- 日志允许截断 / 采样，审计必须完整且防篡改。
+
+before 记录"目标 + 操作 + 工具/技能名 + 参数摘要"，after 记录执行结果概要
+与耗时，从而能仅凭日志还原内核每一步在调度谁、用什么参数、得到什么结果。
 
 输出端走标准 logging（logger 名 ``libcore.aspect``），可配 handler
 输出到 console / 文件 / 轮转 / JSON。与总线 ledger（生命周期层）
@@ -14,6 +19,7 @@ from __future__ import annotations
 
 import json
 import logging
+import time
 from typing import Any
 
 from libcore.kernel.bus import Aspect
@@ -71,7 +77,10 @@ def _summarize(d: Dispatch) -> str:
 
 
 class LoggingAspect(Aspect):
-    """管道日志：记录每条进出总线的信号（含目标、操作、参数、结果）。"""
+    """管道日志：记录每条进出总线的信号（含目标、操作、参数、结果、耗时）。"""
+
+    def __init__(self):
+        self._start: dict[str, float] = {}
 
     def _kind(self, signal) -> str:
         return "dispatch" if isinstance(signal, Dispatch) else "notice"
@@ -80,6 +89,7 @@ class LoggingAspect(Aspect):
         return signal.target if isinstance(signal, Dispatch) else signal.topic
 
     async def before(self, signal):
+        self._start[signal.cid.value] = time.perf_counter()
         kind = self._kind(signal)
         if isinstance(signal, Dispatch):
             detail = _summarize(signal)
@@ -89,25 +99,27 @@ class LoggingAspect(Aspect):
                         kind, self._name(signal), signal.cid.value[:8])
 
     async def after(self, signal, result):
+        elapsed = time.perf_counter() - self._start.pop(signal.cid.value, time.perf_counter())
+        delta_ms = round(elapsed * 1000, 2)
         kind = self._kind(signal)
         if isinstance(signal, Dispatch):
             ok = result.ok if isinstance(result, CapabilityResult) else True
-            # 结果概要：ok + 返回数据的主要键（或错误信息）
+            # 结果概要：ok + 返回数据的主要键（或错误信息）+ 耗时
             if isinstance(result, CapabilityResult) and result.ok and result.data:
                 data_keys = ",".join(str(k) for k in result.data.keys())
-                tail = f"ok keys={data_keys}"
+                tail = f"ok keys={data_keys} {delta_ms}ms"
             elif isinstance(result, CapabilityResult) and not result.ok:
-                tail = f"fail err={_clip(_serialize(result.error) or '')}"
+                tail = f"fail err={_clip(_serialize(result.error) or '')} {delta_ms}ms"
             else:
-                tail = "ok" if ok else "fail"
+                tail = f"{'ok' if ok else 'fail'} {delta_ms}ms"
             logger.info("after  %-8s %s -> %s", kind,
                         _summarize(signal), tail)
         else:
             ok = True
             if isinstance(result, CapabilityResult):
                 ok = result.ok
-            logger.info("after  %-8s %s -> %s", kind,
-                        self._name(signal), "ok" if ok else "fail")
+            logger.info("after  %-8s %s -> %s %sms", kind,
+                        self._name(signal), "ok" if ok else "fail", delta_ms)
 
 
 def register(bus) -> None:

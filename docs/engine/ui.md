@@ -76,8 +76,10 @@ UI 是统一通讯机制的一个通道。前端用户消息经 `UiChannel.inges
 
 ```python
 sink = RenderSink(engine, ws)
-sink.push({"channel_id": "ui:web-1", "text": "..."})
+sink({"type": "render", "component": "chat", "props": {"text": "..."}})
 ```
+
+`RenderSink` 是可调用对象：`sink(spec)` 构建渲染消息并 push 到 WebSocket。`spec` 字段见 `libcore/ui_bridge/render_sink.py` 的 `build`（`type` / `component` / `props` / `target` / `events` / `data` / `lang` / `source` / `title`）。
 
 ## 6. 代码位置
 

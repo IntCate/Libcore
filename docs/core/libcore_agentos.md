@@ -52,12 +52,13 @@ libcore/
 ├── plugins/                # 插件体系
 │   ├── loader.py           #   能力加载器 + 横切面加载器（配置驱动）
 │   ├── capabilities/       #   能力节点（skill/tools/mcp/im/ui/cli/...）
-│   └── aspects/            #   横切面（permission/sandbox/audit/...）
+│   ├── aspects/            #   横切面（permission/sandbox/audit/...）
+│   └── resources/          #   资源库（被各门面扫描）
+│       ├── tools/          #     工具定义库（被 tools 门面扫描）
+│       ├── skills/         #     技能库（SKILL.md + 附件，被 skill 门面扫描）
+│       └── mcp_servers/    #     MCP 工具定义库（被 mcp 门面扫描）
 ├── llm/                    # LLM 适配器库（ollama/openai/anthropic/...）
 ├── storage/                # 存储纯库（session/memory/state/file）
-├── tools/                  # 工具定义库（非总线节点，被 tools 门面扫描）
-├── skills/                 # 技能库（SKILL.md + 附件，被 skill 门面扫描）
-├── mcp_servers/            # MCP 工具定义库（被 mcp 门面扫描）
 ├── engine/                 # 传输引擎（HTTP/WebSocket/静态）
 ├── ui_bridge/              # UI 桥接（前端 RPC → 总线）
 └── config/                 # 配置唯一真相源（capabilities.yaml / aspects.yaml / llm.yaml）
@@ -107,5 +108,5 @@ result = agent.run("获取当前时间")
 | 统一通讯机制（Channel）     | `core/channels.md`                                                        |
 | Skill / Tools / MCP | `capabilities/skill.md` / `capabilities/tools.md` / `capabilities/mcp.md` |
 | UI / IM             | `engine/ui.md` / `engine/im.md`                                           |
-| 存储（session/memory）  | `core/storage.md`                                                         |
+| 存储（session/memory）  | `core/session.md`                                                          |
 

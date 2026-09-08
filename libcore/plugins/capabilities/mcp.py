@@ -135,7 +135,17 @@ class McpEngine:
                 error=f"MCP 工具 {key} 不支持操作 {op!r}（支持 {s.ops}）",
             )
         sub = Dispatch(target=key, op=op or "run", payload=dict(args or {}))
-        return s.handler(sub)
+        result = s.handler(sub)
+        # 暴露内部子调用细节给 tracing/logging（不发布到总线，仅随结果上抛）：
+        # 具体 MCP 工具 handler 是开放组件，不走总线，但门面把"内部调了谁、什么参数"
+        # 塞进 result.data，使 tracing 能还原到具体工具这一层，而不只是 mcp run 门面。
+        if isinstance(result, CapabilityResult):
+            result.data["_internal"] = {
+                "sub_target": key,
+                "sub_op": op or "run",
+                "sub_args": dict(args or {}),
+            }
+        return result
 
 
 # ---- 总线装配 ----

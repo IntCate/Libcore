@@ -11,6 +11,8 @@ aspects:
       threshold: 3
   - name: sandbox
     enabled: true
+    config:
+      enabled: true   # 沙箱接管执行：把 bash/skill 放到隔离子进程跑（缺省 false = 不接管）
   # 编排治理：迭代预算 + 死循环检测（匹配 loop.iteration 广播）
   # max_iterations 为帧迭代上限护栏，经 config 传入（缺省 25）
   - name: budget_guard

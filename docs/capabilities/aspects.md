@@ -18,7 +18,9 @@ class Aspect(ABC):
 ```
 
 - `matches`：默认匹配全部信号，子类可只关心特定 target / topic。
+
 - `before`：投递前阶段。若返回非 None（CapabilityResult），视为**护栏阻断**，跳过 handler。
+
 - `after`：投递后阶段。
 
 ## 3. 拦截顺序
@@ -26,31 +28,32 @@ class Aspect(ABC):
 横切面按**挂载顺序**拦截：
 
 - `before` 正序（先套先跑）
+
 - `after` 逆序（后套先跑）
 
 `aspects.yaml` 的列表顺序 = 拦截顺序。
 
 ## 4. 两类横切面
 
-| 类型 | 阶段 | 例子 | 说明 |
-| --- | --- | --- | --- |
-| **审查类（护栏）** | before 拒绝 | permission / circuit_breaker / sandbox | 先拒绝，再让观察类记录 |
-| **观察类** | 记录 | logging / tracing / audit / telemetry | 记录信号，不阻断 |
+| 类型          | 阶段        | 例子                                      | 说明          |
+| ----------- | --------- | --------------------------------------- | ----------- |
+| **审查类（护栏）** | before 拒绝 | permission / circuit\_breaker / sandbox | 先拒绝，再让观察类记录 |
+| **观察类**     | 记录        | logging / tracing / audit / telemetry   | 记录信号，不阻断    |
 
 ## 5. 内置横切面一览
 
-| 横切面 | 匹配 | 职责 |
-| --- | --- | --- |
-| **permission** | 执行类信号（tool.* / skill exec） | 权限闸门：拒绝危险命令 |
-| **circuit_breaker** | 全部 | 熔断：连续失败后短路 |
-| **sandbox** | 执行类信号 | 沙箱：限制执行环境 |
-| **budget_guard** | `loop.iteration` 广播 | 迭代预算：三级压力注入 + 100% 熔断 |
-| **loop_governor** | `loop.iteration` 广播 | 死循环检测 |
-| **trace_recorder** | `loop.iteration` 广播 | 循环追踪记录 |
-| **logging** | 全部 | 日志 |
-| **tracing** | 全部 | 追踪 |
-| **audit** | 全部 | 审计 |
-| **telemetry** | 全部 | 遥测 |
+| 横切面                  | 匹配                                         | 职责                                              |
+| -------------------- | ------------------------------------------ | ----------------------------------------------- |
+| **permission**       | 执行类信号（tool.\* / skill exec / mcp run）      | 权限闸门：拒绝危险命令                                     |
+| **circuit\_breaker** | 执行类信号（tools run / mcp run）                 | 熔断：连续失败后短路                                      |
+| **sandbox**          | 执行类信号                                      | 沙箱：把执行重定向到隔离子进程（受限环境）                           |
+| **budget\_guard**    | `loop.iteration` 广播                        | 迭代预算：三级压力注入 + 100% 熔断                           |
+| **loop\_governor**   | `loop.iteration` 广播                        | 死循环检测                                           |
+| **trace\_recorder**  | `loop.iteration` / `loop.input_missing` 广播 | 循环追踪记录                                          |
+| **logging**          | 全部                                         | 过程日志：调用链、参数摘要、耗时（排障诊断）                          |
+| **tracing**          | 点名调度（Dispatch）                             | 过程轨迹：每步 span（含 parent\_cid 链路、耗时）               |
+| **audit**            | 执行类信号                                      | 合规审计：who + what + outcome + SHA-256 hash 链（防篡改） |
+| **telemetry**        | 全部                                         | 指标遥测：耗时、成功率、计数（趋势 / 告警）                         |
 
 ## 6. 配置驱动（唯一真相源）
 
@@ -62,12 +65,20 @@ aspects:
     enabled: true
   - name: circuit_breaker
     enabled: true
+    config:
+      threshold: 3
   - name: sandbox
     enabled: true
+    config:
+      enabled: true   # 沙箱接管执行：把 bash/skill 放到隔离子进程跑（缺省 false = 不接管）
   - name: budget_guard
     enabled: true
+    config:
+      max_iterations: 25
   - name: loop_governor
     enabled: true
+    config:
+      threshold: 3
   - name: trace_recorder
     enabled: true
   - name: logging
@@ -80,7 +91,10 @@ aspects:
     enabled: true
 ```
 
-- **列表顺序 = 拦截顺序**（无需 order / before / after / depends_on 字段）。
+- **列表顺序 = 拦截顺序**（无需 order / before / after / depends\_on 字段）。
+
+- 每个条目可带 `config` 字典，作为关键字参数传给 `register(bus, **config)`（如 `threshold`、`max_iterations`、`allowlist`）。
+
 - 改 `enabled` 保存即可，`AspectLoader.watch()` 自动重建横切管。
 
 ## 7. 加载器（AspectLoader）
@@ -120,5 +134,8 @@ def register(bus) -> None:
 ## 9. 代码位置
 
 - `libcore/plugins/aspects/`：横切面插件
+
 - `libcore/config/aspects.yaml`：横切面配置唯一真相源
+
 - `libcore/plugins/loader.py`：AspectLoader
+

@@ -8,6 +8,8 @@
 
 产出约定：`data["status"]` 为发送结果；`data["message_id"]` 为平台消息 id（可选）。无平台适配器 → 降级为 not\_implemented（诚实披露，绝不编造发送成功）。
 
+**内部细节暴露**：平台适配器是**开放组件，不走总线**（保持零耦合可拆卸）。但 `im` 门面会把内部路由细节塞进 `result.data["_internal"]`（`platform` / `adapter_op`），随结果上抛，使 tracing/logging 能还原到具体平台这一层，而不只是 `im` 门面。
+
 ## 2. IM 能力节点
 
 manifest 暴露 `im` 一个入口，op 为 `send` / `receive` / `list_platforms` / `status`：
