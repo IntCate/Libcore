@@ -120,7 +120,7 @@ def register(bus, registry: Optional[IMRegistry] = None, channels=None) -> None:
 
 
 def wire_feishu_listener(bus, channels, app_id: str, app_secret: str,
-                         domain: str = "feishu") -> Any:
+                         domain: str = "feishu", adapter=None) -> Any:
     """装配飞书入站监听：WebSocket 收消息 → ImChannel.ingest → 广播 channel.inbound。
 
     - 收到消息时按 ``im:feishu:{chat_id}`` 复用/创建 ImChannel（同一会话保持同一 channel_id）；
@@ -128,13 +128,17 @@ def wire_feishu_listener(bus, channels, app_id: str, app_secret: str,
     - 返回 FeishuListener 实例，调用方负责在后台线程/任务 ``start()``。
 
     依赖 ``lark-oapi``；未安装时抛 RuntimeError（诚实披露，不静默降级）。
+
+    ``adapter`` 可注入已构造的 FeishuAdapter（装配层便利，如经 ``build_adapter`` 统一取数）；
+    缺省时按 ``app_id`` / ``app_secret`` 内部构造。
     """
     from libcore.channels.im_channel import ImChannel
     from libcore.channels.message import InboundMessage
     from libcore.channels.feishu_listener import FeishuListener
     from libcore.plugins.capabilities.platforms.feishu import FeishuAdapter
 
-    adapter = FeishuAdapter(app_id, app_secret, domain=domain)
+    if adapter is None:
+        adapter = FeishuAdapter(app_id, app_secret, domain=domain)
 
     def _on_message(chat_id: str, user_id: str, text: str) -> None:
         channel_id = f"im:feishu:{chat_id}"

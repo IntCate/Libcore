@@ -66,6 +66,14 @@ class TestLoadProfiles:
         profiles = load_profiles()
         assert "not_a_role" not in profiles
 
+    def test_coder_capabilities_parsed_as_list(self):
+        """coder 的 capabilities 是 dict{allow:[...]}，加载后必须归一化为 list。"""
+        p = load_profiles()["coder"]
+        assert isinstance(p.capabilities, list), (
+            f"coder.capabilities 应为 list，实际 {type(p.capabilities).__name__}: {p.capabilities!r}"
+        )
+        assert p.capabilities == ["tools", "tool.*", "skill"]
+
 
 class TestScopedReason:
     def test_filters_capability_whitelist(self):

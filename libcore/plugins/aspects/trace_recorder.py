@@ -26,7 +26,7 @@ class TraceRecorderAspect(Aspect):
 
     def matches(self, signal) -> bool:
         return (isinstance(signal, Notice)
-                and signal.topic in ("loop.iteration", "loop.input_missing"))
+                and signal.topic in ("loop.iteration", "loop.result", "loop.input_missing"))
 
     async def before(self, signal):
         ctx = (signal.payload or {}).get("ctx")
@@ -37,6 +37,13 @@ class TraceRecorderAspect(Aspect):
                 "target": (signal.payload or {}).get("target"),
                 "goal": (signal.payload or {}).get("goal"),
             })
+            return None
+        if signal.topic == "loop.result":
+            # 本轮 dispatch 已返回：结算该轮耗时（elapsed_ms 真实记录）
+            iteration = len(self.records)
+            start = self._start.pop(iteration, None)
+            if start is not None and self.records:
+                self.records[-1]["elapsed_ms"] = round((time.monotonic() - start) * 1000, 3)
             return None
         if ctx is None:
             return None

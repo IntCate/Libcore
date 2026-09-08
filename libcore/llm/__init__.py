@@ -10,7 +10,7 @@
 from __future__ import annotations
 
 import pathlib
-from typing import Any, Callable, Dict
+from typing import Any, Callable, Dict, Optional
 
 from .spi import ChatBackend, ChatResult, LLMMsg, ToolCall
 
@@ -107,6 +107,68 @@ def _ensure_defaults() -> None:
             return LangChainOllamaBackend(model=model, base_url=base, timeout=timeout)
 
         register("langchain-ollama", langchain_ollama)
+    except Exception:
+        pass
+
+    # ---- openai-completions 协议族（api_key 缺省从密钥层读取）----
+    try:
+        from .openai import OpenAICompletionsBackend
+
+        def openai(base_url: str = "https://api.openai.com/v1",
+                   api_key: Optional[str] = None, timeout: float = 180.0) -> Any:
+            from libcore.secrets import get_secret
+            api_key = api_key or get_secret("OPENAI_API_KEY")
+            return OpenAICompletionsBackend(base_url=base_url, api_key=api_key, timeout=timeout)
+
+        register("openai", openai)
+    except Exception:
+        pass
+
+    # ---- anthropic-messages 协议族 ----
+    try:
+        from .anthropic import AnthropicMessagesBackend
+
+        def anthropic(base_url: str = "https://api.anthropic.com",
+                      api_key: Optional[str] = None, timeout: float = 180.0) -> Any:
+            from libcore.secrets import get_secret
+            api_key = api_key or get_secret("ANTHROPIC_API_KEY")
+            return AnthropicMessagesBackend(base_url=base_url, api_key=api_key, timeout=timeout)
+
+        register("anthropic", anthropic)
+    except Exception:
+        pass
+
+    # ---- google-generative-ai 协议族 ----
+    try:
+        from .google import GoogleGenerativeAIBackend
+
+        def google(base_url: str = "https://generativelanguage.googleapis.com",
+                   api_key: Optional[str] = None, timeout: float = 180.0) -> Any:
+            from libcore.secrets import get_secret
+            api_key = api_key or get_secret("GOOGLE_API_KEY")
+            return GoogleGenerativeAIBackend(base_url=base_url, api_key=api_key, timeout=timeout)
+
+        register("google", google)
+    except Exception:
+        pass
+
+    # ---- bedrock-converse（boto3 可选依赖，未装则跳过注册）----
+    try:
+        from .bedrock import BedrockConverseBackend
+
+        def bedrock(aws_access_key_id: Optional[str] = None,
+                    aws_secret_access_key: Optional[str] = None,
+                    aws_region: Optional[str] = None) -> Any:
+            from libcore.secrets import get_secret
+            aws_access_key_id = aws_access_key_id or get_secret("AWS_ACCESS_KEY_ID")
+            aws_secret_access_key = aws_secret_access_key or get_secret("AWS_SECRET_ACCESS_KEY")
+            return BedrockConverseBackend(
+                aws_access_key_id=aws_access_key_id,
+                aws_secret_access_key=aws_secret_access_key,
+                aws_region=aws_region,
+            )
+
+        register("bedrock", bedrock)
     except Exception:
         pass
 

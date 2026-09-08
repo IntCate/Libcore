@@ -37,6 +37,48 @@ from typing import Dict, List, Optional
 from ..kernel.bus import EventBus, Notice
 
 
+def _package_for(path: pathlib.Path) -> Optional[str]:
+    """从模块文件路径推导其所在包的模块名（如 ``libcore.plugins.capabilities``）。
+
+    从模块文件所在目录向上遍历，收集含 ``__init__.py`` 的目录链，倒序用 ``.`` 连接。
+    最外层目录名即包根模块名（假设它在 ``sys.path`` 上，如 ``libcore``）。
+    模块不在任何包内（无 ``__init__.py`` 链）时返回 None。
+    """
+    parts: List[str] = []
+    d = path.parent
+    while (d / "__init__.py").exists():
+        parts.append(d.name)
+        d = d.parent
+    if not parts:
+        return None
+    parts.reverse()
+    return ".".join(parts)
+
+
+def _load_module(name: str, path: pathlib.Path):
+    """动态加载一个插件模块（能力/横切面共用）。
+
+    模块在真实包内时，用真实包路径作为模块名（spec.parent 自动正确，
+    相对导入可解析，且不产生 __package__ != __spec__.parent 警告）。
+    """
+    pkg = _package_for(path)
+    if pkg:
+        name = f"{pkg}.{path.stem}"
+    spec = importlib.util.spec_from_file_location(name, path)
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+def _config_digest(config_path) -> Optional[int]:
+    """配置文件内容摘要（mtime_ns），用于 watch 检测变化。"""
+    try:
+        return pathlib.Path(config_path).stat().st_mtime_ns
+    except OSError:
+        return None
+
+
 class CapabilityLoader:
     def __init__(self, bus: EventBus, plugins_dir) -> None:
         self.bus = bus
@@ -236,26 +278,19 @@ class CapabilityLoader:
 
     @staticmethod
     def _config_digest(config_path) -> Optional[int]:
-        try:
-            return pathlib.Path(config_path).stat().st_mtime_ns
-        except OSError:
-            return None
+        return _config_digest(config_path)
 
     @staticmethod
     def _module_description(path: pathlib.Path) -> str:
         try:
-            module = CapabilityLoader._load_module(f"__peek__.{path.stem}", path)
+            module = _load_module(f"__peek__.{path.stem}", path)
             return getattr(module, "DESCRIPTION", "") or ""
         except Exception:
             return ""
 
     @staticmethod
     def _load_module(name: str, path: pathlib.Path):
-        spec = importlib.util.spec_from_file_location(name, path)
-        module = importlib.util.module_from_spec(spec)
-        sys.modules[name] = module
-        spec.loader.exec_module(module)
-        return module
+        return _load_module(name, path)
 
 
 class AspectLoader:
@@ -361,10 +396,7 @@ class AspectLoader:
 
     @staticmethod
     def _config_digest(config_path) -> Optional[int]:
-        try:
-            return pathlib.Path(config_path).stat().st_mtime_ns
-        except OSError:
-            return None
+        return _config_digest(config_path)
 
     # ---- 配置读写 ----
 
@@ -386,8 +418,4 @@ class AspectLoader:
 
     @staticmethod
     def _load_module(name: str, path: pathlib.Path):
-        spec = importlib.util.spec_from_file_location(name, path)
-        module = importlib.util.module_from_spec(spec)
-        sys.modules[name] = module
-        spec.loader.exec_module(module)
-        return module
+        return _load_module(name, path)

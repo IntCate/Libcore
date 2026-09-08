@@ -20,38 +20,49 @@ from libcore.kernel.bus import Notice
 
 
 class LoopGovernorAspect(Aspect):
-    """循环治理：跨轮次死循环检测。"""
+    """循环治理：跨轮次死循环检测。
+
+    跨轮次历史按会话（ctx.root_cid）隔离：并发任务各自独立检测，
+    互不污染（生产级并发安全）。
+    """
 
     def __init__(self, threshold: int = 3):
         self.threshold = threshold
-        self._history: List[Dict[str, Any]] = []   # 跨轮次工具调用记录
+        self._history: Dict[str, List[Dict[str, Any]]] = {}   # ctx.root_cid -> 该会话工具调用记录
 
     def matches(self, signal) -> bool:
-        return isinstance(signal, Notice) and signal.topic == "loop.iteration"
+        return isinstance(signal, Notice) and signal.topic in ("loop.iteration", "loop.result")
 
     async def before(self, signal):
         ctx = (signal.payload or {}).get("ctx")
         if ctx is None:
             return None
-        # 本轮决策者选中的目标（若有）——从 ctx 最近一次观察取
-        action = (signal.payload or {}).get("action")
-        if action is None:
+        key = ctx.root_cid.value
+        if signal.topic == "loop.result":
+            # 本轮 dispatch 已返回：用真实结果判定"是否有错误"，再检测死循环
+            result = (signal.payload or {}).get("result")
+            action = (signal.payload or {}).get("action")
+            if action is None:
+                return None
+            target = getattr(action, "target", None)
+            if not target:
+                return None
+            payload = getattr(action, "payload", None) or {}
+            sig = (str(target), json.dumps(payload, sort_keys=True, ensure_ascii=False))
+            is_error = not getattr(result, "ok", True)
+            history = self._history.setdefault(key, [])
+            history.append({"sig": sig, "error": is_error})
+            if self._is_doom_loop(history):
+                ctx.done = True
+                ctx.observations.append({"error": "检测到死循环（重复调用同一工具且无新信息），自动停止。"})
             return None
-        target = getattr(action, "target", None)
-        if not target:
-            return None
-        payload = getattr(action, "payload", None) or {}
-        sig = (str(target), json.dumps(payload, sort_keys=True, ensure_ascii=False))
-        self._history.append({"sig": sig, "error": False})
-        if self._is_doom_loop():
-            ctx.done = True
-            ctx.observations.append({"error": "检测到死循环（重复调用同一工具且无新信息），自动停止。"})
+        # loop.iteration：仅记录本轮决策（无结果，error 判定交给 loop.result）
         return None
 
-    def _is_doom_loop(self) -> bool:
-        if len(self._history) < self.threshold:
+    def _is_doom_loop(self, history: List[Dict[str, Any]]) -> bool:
+        if len(history) < self.threshold:
             return False
-        recent = self._history[-self.threshold:]
+        recent = history[-self.threshold:]
         sigs = [r["sig"] for r in recent]
         return len(set(sigs)) == 1 and all(not r["error"] for r in recent)
 

@@ -116,33 +116,71 @@ class EventBus:
         if handler is None:
             self._ledger({"kind": "dispatch.no_handler", "target": d.target})
             raise NoHandlerError(d.target)
-        blocked = await self._run_aspects("before", d)
+        try:
+            blocked = await self._run_aspects("before", d)
+        except Exception as e:  # noqa: BLE001 - aspect 自身故障：仍走 after 留痕，再向上抛
+            await self._run_aspects("after", d, CapabilityResult(ok=False, error=str(e)))
+            raise
         if blocked is not None:
             # 横切面护栏（权限 / 熔断 / 沙箱）在 before 拒绝：跳过 handler，
             # 仍走 after 让审计 / 遥测记到"被拒"这一笔。
             await self._run_aspects("after", d, blocked)
             return blocked
+        try:
+            result = handler(d)
+            if _is_awaitable(result):
+                result = await result
+        except Exception as e:  # noqa: BLE001 - handler 异常也必须走 after 留痕，再向上抛
+            await self._run_aspects("after", d, CapabilityResult(ok=False, error=str(e)))
+            raise
+        await self._run_aspects("after", d, result)
+        return result
+
+    async def invoke(self, d: Dispatch) -> CapabilityResult:
+        """直接调用 handler，不走横切面（供重试等接管型横切面复用，避免递归）。
+
+        与 ``dispatch`` 的区别：不跑 before/after 横切面，只执行 handler 并返回结果。
+        供 RetryAspect 等在 before 阶段"接管执行 + 重试"时复用原 handler。
+        """
+        handler = self._handlers.get(d.target)
+        if handler is None:
+            raise NoHandlerError(d.target)
         result = handler(d)
         if _is_awaitable(result):
             result = await result
-        await self._run_aspects("after", d, result)
         return result
 
     async def publish(self, n: Notice) -> None:
         """广播投递：按 topic 扇出到所有订阅者（与 dispatch 一样兼容同步/异步）。"""
-        blocked = await self._run_aspects("before", n)
+        try:
+            blocked = await self._run_aspects("before", n)
+        except Exception as e:  # noqa: BLE001 - aspect 自身故障：仍走 after 留痕，再向上抛
+            await self._run_aspects("after", n, CapabilityResult(ok=False, error=str(e)))
+            raise
         if blocked is not None:
-            return  # 横切面阻断该广播：不扇出
+            # 横切面阻断该广播：仍走 after 让遥测等清理 before 残留、记录被拒这一笔
+            await self._run_aspects("after", n, blocked)
+            return
+        first_error: Exception | None = None
         for handler in self._subs.get(n.topic, ()):
-            result = handler(n)
-            if _is_awaitable(result):
-                await result
+            try:
+                result = handler(n)
+                if _is_awaitable(result):
+                    await result
+            except Exception as e:  # noqa: BLE001 - 单个订阅者故障不中断后续订阅者
+                self._ledger({"kind": "publish.subscriber_error",
+                              "topic": n.topic, "error": str(e)})
+                if first_error is None:
+                    first_error = e
         await self._run_aspects("after", n, None)
+        if first_error is not None:
+            raise first_error
 
     # ---- 内部 ----
 
     async def _run_aspects(self, phase: str, signal: Signal, result: Any = None) -> Any:
         chain = self._aspects if phase == "before" else list(reversed(self._aspects))
+        first_error: Exception | None = None
         for aspect in chain:
             if not aspect.matches(signal):
                 continue
@@ -161,9 +199,16 @@ class EventBus:
                     "signal": str(signal),
                     "error": str(e),
                 })
-                raise
+                # 隔离 aspect 故障：跳过该 aspect，继续后续 aspect，不中断整条链。
+                # before 阶段记下首个异常，供 dispatch/publish 在走完 after 后 re-raise；
+                # after 阶段（观测）不 re-raise，避免观测自身故障拖垮投递。
+                if phase == "before" and first_error is None:
+                    first_error = e
+                continue
             # before 阶段：aspect 若返回非 None（CapabilityResult），视为护栏阻断，
             # 立即停止后续横切面，并把结果透传给总线用于短路 handler。
             if phase == "before" and step_r is not None:
                 return step_r
+        if phase == "before" and first_error is not None:
+            raise first_error
         return None

@@ -9,6 +9,15 @@ aspects:
     enabled: true
     config:
       threshold: 3
+  - name: timeout
+    enabled: true
+    config:
+      timeout: 300
+  - name: retry
+    enabled: true
+    config:
+      retries: 0
+      retry_delay: 0.1
   - name: sandbox
     enabled: true
     config:
@@ -23,6 +32,12 @@ aspects:
     enabled: true
     config:
       threshold: 3
+  # 编排治理：等待能力上线超时（匹配 loop.iteration 广播，连续 wait 超限熔断）
+  # max_waits 为连续 wait 上限护栏，经 config 传入（缺省 50）
+  - name: wait_timeout
+    enabled: true
+    config:
+      max_waits: 50
   # 观察类：循环追踪记录（匹配 loop.iteration 广播）
   - name: trace_recorder
     enabled: true

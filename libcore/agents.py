@@ -54,6 +54,26 @@ class AgentProfile:
 # 加载
 # ---------------------------------------------------------------
 
+def _normalize_capabilities(caps: Any) -> Optional[List[str]]:
+    """把 capabilities 归一化为 list[str]（能力白名单）。
+
+    兼容两种声明形式：
+    - list：``["tools", "tool.*"]``（直接白名单）；
+    - dict：``{"allow": ["tools", "tool.*"]}``（显式 allow 键）。
+    None 原样返回（= 不限能力域）。
+    """
+    if caps is None:
+        return None
+    if isinstance(caps, list):
+        return list(caps)
+    if isinstance(caps, dict):
+        allow = caps.get("allow")
+        if isinstance(allow, list):
+            return list(allow)
+        return None
+    return None
+
+
 def _config_root() -> Path:
     """libcore/config/：以本文件（libcore/agents.py）定位。"""
     import libcore
@@ -102,6 +122,7 @@ def load_profiles(path: Optional[str] = None) -> Dict[str, AgentProfile]:
             continue  # 连接键未知：跳过该角色（不阻塞整表），由装配方感知缺失
         temp = spec.get("temperature", d.get("temperature", llm.get("temperature", 0.2)))
         prompt = (spec.get("system_prompt") or llm.get("system_prompt") or "").strip()
+        caps = spec.get("capabilities", d.get("capabilities"))
         out[name] = AgentProfile(
             name=name,
             kind=str(spec.get("kind") or "worker"),
@@ -109,7 +130,7 @@ def load_profiles(path: Optional[str] = None) -> Dict[str, AgentProfile]:
             backend=backend,
             model=model,
             temperature=float(temp) if temp is not None else None,
-            capabilities=spec.get("capabilities", d.get("capabilities")),
+            capabilities=_normalize_capabilities(caps),
             input_nodes=spec.get("input_nodes", d.get("input_nodes")),
         )
     return out

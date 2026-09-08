@@ -140,11 +140,13 @@ class McpEngine:
         # 具体 MCP 工具 handler 是开放组件，不走总线，但门面把"内部调了谁、什么参数"
         # 塞进 result.data，使 tracing 能还原到具体工具这一层，而不只是 mcp run 门面。
         if isinstance(result, CapabilityResult):
-            result.data["_internal"] = {
-                "sub_target": key,
-                "sub_op": op or "run",
-                "sub_args": dict(args or {}),
-            }
+            # 仅当 data 为 dict 时才注入 _internal（data=None 时保持原样，不崩溃）
+            if isinstance(result.data, dict):
+                result.data["_internal"] = {
+                    "sub_target": key,
+                    "sub_op": op or "run",
+                    "sub_args": dict(args or {}),
+                }
         return result
 
 

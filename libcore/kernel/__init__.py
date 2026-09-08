@@ -58,11 +58,15 @@ class Kernel:
         targets: dict,
         aspects: Iterable[Aspect] = (),
         reason: ReasonProvider | None = None,
+        input_nodes: Optional[list] = None,
     ) -> "Kernel":
         """便捷装配：把 ``{target: handler}`` 能力与护栏组装成可用内核。
 
         ``targets`` 的值可以是 ``handler`` 或 ``(handler, meta)`` 二元组，
         后者用于登记能力描述（汇入可呼叫清单，供 Agent 决策者发现）。
+
+        ``input_nodes`` 为决策输入节点（含 slot），由装配层传入；缺省 None 时
+        AgentLoop 退化为内置默认（context/prompt）。内核不读插件配置，保持独立。
         """
         bus = EventBus()
         for target, spec in targets.items():
@@ -70,7 +74,7 @@ class Kernel:
             bus.on(target, handler, meta=meta)
         for aspect in aspects:
             bus.add_aspect(aspect)
-        loop = AgentLoop(bus, reason, input_nodes=cls._input_nodes())
+        loop = AgentLoop(bus, reason, input_nodes=input_nodes)
         return cls(bus, loop)
 
     @classmethod
@@ -89,22 +93,15 @@ class Kernel:
         复用 AgentLoop 执行协作请求。调用方通过 ``serve()`` 启动、``submit`` 投递、
         ``shutdown()`` 优雅关闭。
         """
-        kernel = cls.bootstrap(targets=targets, aspects=aspects, reason=reason)
+        kernel = cls.bootstrap(targets=targets, aspects=aspects, reason=reason,
+                               input_nodes=input_nodes)
         kernel.resident = ResidentKernel(
             kernel.bus,
             kernel.loop.reason,
             max_concurrency=max_concurrency,
-            input_nodes=input_nodes if input_nodes is not None else cls._input_nodes(),
+            input_nodes=input_nodes,
         )
         return kernel
-
-    @staticmethod
-    def _input_nodes():
-        """从 capabilities.yaml 读取决策输入节点（含 slot）；无配置则用默认。"""
-        from ..plugins.loader import CapabilityLoader
-        nodes = CapabilityLoader.load_input_nodes()
-        return nodes or [{"target": "context", "slot": "user"},
-                         {"target": "prompt", "slot": "system"}]
 
 
 __all__ = [

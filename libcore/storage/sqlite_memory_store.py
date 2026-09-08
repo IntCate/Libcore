@@ -104,8 +104,10 @@ class SqliteMemoryStore:
 
     @staticmethod
     def _to_record(row) -> MemoryRecord:
+        importance = row["importance"]
         return MemoryRecord(
             id=row["id"], session_id=row["session_id"] or "", content=row["content"] or "",
-            kind=row["kind"] or "fact", importance=row["importance"] or 0.5,
+            kind=row["kind"] or "fact",
+            importance=importance if importance is not None else 0.5,
             tags=_loads(row["tags"], []), created_at=row["created_at"] or 0.0,
         )

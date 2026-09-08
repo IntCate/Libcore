@@ -212,18 +212,28 @@ class UiBridge:
         kernel.bus = self.bus          # 共享总线：入站广播与出站点名同一条
         wire_inbound_to_kernel(self.bus, kernel)
 
-    def attach_feishu(self, app_id: str, app_secret: str, domain: str = "feishu") -> None:
+    def attach_feishu(self, app_id: Optional[str] = None, app_secret: Optional[str] = None,
+                      domain: str = "feishu") -> None:
         """把飞书 IM 入站监听挂到桥：WebSocket 收消息 → ImChannel.ingest → 统一入站链路。
 
         - 复用 ``im`` 能力节点的 ``wire_feishu_listener`` 装配监听器；
         - 收到消息经 ImChannel.ingest 广播 channel.inbound，与 UI 通道走同一条链路；
         - 出站 sender 复用飞书适配器（FeishuAdapter）发回原会话；
         - 监听器需在后台线程/任务 ``start()``（WebSocket 长连接阻塞）。
+
+        密钥来源（装配层便利，不约束插件）：
+        - 显式传入 ``app_id`` / ``app_secret`` 优先；
+        - 缺省时经统一工厂 ``build_adapter`` 从密钥层读取 ``FEISHU_APP_ID`` / ``FEISHU_APP_SECRET``；
+        - 两者皆无则抛错（诚实披露，不静默降级）。
         """
         from libcore.plugins.capabilities import im as im_capability
+        from libcore.plugins.capabilities.platforms import build_adapter
+
+        adapter = build_adapter("feishu", app_id=app_id, app_secret=app_secret, domain=domain)
 
         self._feishu_listener = im_capability.wire_feishu_listener(
-            self.bus, self.channels, app_id=app_id, app_secret=app_secret, domain=domain,
+            self.bus, self.channels, app_id=app_id or "", app_secret=app_secret or "",
+            domain=domain, adapter=adapter,
         )
 
     def start_feishu_listener(self) -> None:

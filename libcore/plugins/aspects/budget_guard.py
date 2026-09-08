@@ -15,22 +15,28 @@ from libcore.llm.spi import LLMMsg
 
 
 class BudgetGuardAspect(Aspect):
-    """迭代预算护栏：三级压力注入 + 100% 熔断。"""
+    """迭代预算护栏：三级压力注入 + 100% 熔断。
+
+    跨轮次计数按会话（ctx.root_cid）隔离：并发任务各自独立计数，
+    互不污染（生产级并发安全）。
+    """
 
     def __init__(self, max_iterations: int = 25, bus=None):
         self.max = max_iterations
-        self.used = 0
+        self._used: dict[str, int] = {}   # ctx.root_cid -> 该会话已用迭代数
         self._bus = bus
 
     def matches(self, signal) -> bool:
         return isinstance(signal, Notice) and signal.topic == "loop.iteration"
 
     async def before(self, signal):
-        self.used += 1
-        pct = self.used / self.max
         ctx = (signal.payload or {}).get("ctx")
         if ctx is None:
             return None
+        key = ctx.root_cid.value
+        used = self._used.get(key, 0) + 1
+        self._used[key] = used
+        pct = used / self.max
 
         if pct >= 1.0:
             ctx.done = True
@@ -45,15 +51,15 @@ class BudgetGuardAspect(Aspect):
 
         pressure = None
         if pct >= 0.9:
-            remaining = self.max - self.used
+            remaining = self.max - used
             pressure = (
-                f"\n\n[BUDGET WARNING: Iteration {self.used}/{self.max}. "
+                f"\n\n[BUDGET WARNING: Iteration {used}/{self.max}. "
                 f"Only {remaining} left. Provide your final response NOW.]"
             )
         elif pct >= 0.7:
-            remaining = self.max - self.used
+            remaining = self.max - used
             pressure = (
-                f"\n\n[BUDGET: Iteration {self.used}/{self.max}. "
+                f"\n\n[BUDGET: Iteration {used}/{self.max}. "
                 f"{remaining} left. Start consolidating your findings.]"
             )
         if pressure:
@@ -61,7 +67,7 @@ class BudgetGuardAspect(Aspect):
         return None
 
     def reset(self) -> None:
-        self.used = 0
+        self._used.clear()
 
 
 def register(bus, max_iterations: int = 25) -> None:

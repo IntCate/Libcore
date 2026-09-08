@@ -65,11 +65,11 @@ class SqliteDataStore(SessionStore):
                 id TEXT PRIMARY KEY, chat_id TEXT, role TEXT, message_type TEXT,
                 content TEXT, reasoning_content TEXT, created_at TEXT, model TEXT,
                 files TEXT, agent_session_id TEXT, agent_node TEXT, agent_step INTEGER,
-                agent_metadata TEXT
+                agent_metadata TEXT, metadata TEXT
             );
             CREATE TABLE IF NOT EXISTS agent_sessions (
                 id TEXT PRIMARY KEY, chat_id TEXT, created_at TEXT, updated_at TEXT,
-                graph_state TEXT, current_node TEXT, step_count INTEGER
+                graph_state TEXT, current_node TEXT, step_count INTEGER, metadata TEXT
             );
             """
         )
@@ -89,12 +89,13 @@ class SqliteDataStore(SessionStore):
             conn.execute(
                 "INSERT OR REPLACE INTO messages "
                 "(id, chat_id, role, message_type, content, reasoning_content, created_at, model, "
-                "files, agent_session_id, agent_node, agent_step, agent_metadata) "
-                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                "files, agent_session_id, agent_node, agent_step, agent_metadata, metadata) "
+                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 (msg.id, session_id, msg.role, msg.message_type, msg.content,
                  msg.reasoning_content, msg.created_at or datetime.now().isoformat(),
                  msg.model, _dumps(msg.files), msg.agent_session_id, msg.agent_node,
-                 msg.agent_step, _dumps(msg.agent_metadata) if msg.agent_metadata is not None else None),
+                 msg.agent_step, _dumps(msg.agent_metadata) if msg.agent_metadata is not None else None,
+                 _dumps(msg.metadata) if msg.metadata is not None else None),
             )
         conn.commit()
 
@@ -114,11 +115,12 @@ class SqliteDataStore(SessionStore):
         now = datetime.now().isoformat()
         conn.execute(
             "INSERT OR REPLACE INTO agent_sessions "
-            "(id, chat_id, created_at, updated_at, graph_state, current_node, step_count) "
-            "VALUES (?,?,?,?,?,?,?)",
+            "(id, chat_id, created_at, updated_at, graph_state, current_node, step_count, metadata) "
+            "VALUES (?,?,?,?,?,?,?,?)",
             (session.id, session.chat_id, session.created_at or now, session.updated_at or now,
              _dumps(session.graph_state) if session.graph_state is not None else None,
-             session.current_node, session.step_count),
+             session.current_node, session.step_count,
+             _dumps(session.metadata) if session.metadata is not None else None),
         )
         conn.commit()
         if session.messages:
@@ -154,6 +156,7 @@ class SqliteDataStore(SessionStore):
             files=_loads(row["files"], []), agent_session_id=row["agent_session_id"],
             agent_node=row["agent_node"], agent_step=row["agent_step"],
             agent_metadata=_loads(row["agent_metadata"], None),
+            metadata=_loads(row["metadata"], {}),
         )
 
     @staticmethod
@@ -163,4 +166,5 @@ class SqliteDataStore(SessionStore):
             created_at=row["created_at"] or "", updated_at=row["updated_at"] or "",
             graph_state=_loads(row["graph_state"], None),
             current_node=row["current_node"] or "", step_count=row["step_count"] or 0,
+            metadata=_loads(row["metadata"], {}),
         )

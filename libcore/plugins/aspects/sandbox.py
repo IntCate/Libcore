@@ -52,15 +52,36 @@ def is_exec_signal(signal) -> bool:
 # bash 子进程允许透传的环境变量白名单（其余一律丢弃，隔离宿主环境）
 _BASH_ENV_ALLOWLIST = ("PATH", "HOME", "TEMP", "TMP", "SYSTEMROOT", "USERPROFILE")
 
+# bash 命令白名单：只允许这些安全命令（其余一律拒绝，遏制任意命令执行）
+# 注意：Windows 上 echo/dir 等是 cmd 内建，shell=False 无法执行，故不列入；
+# python 用于沙箱内执行受限脚本（已隔离工作目录 + 环境白名单）。
+_BASH_CMD_ALLOWLIST = (
+    "ls", "cat", "grep", "head", "tail", "wc", "pwd", "date",
+    "find", "sort", "uniq", "cut", "tr", "sed", "awk", "basename", "dirname",
+    "stat", "file", "which", "env", "printf", "true", "false", "python",
+)
+
 
 class SandboxExecutor:
     """隔离执行器：把执行类信号放到受限子进程里跑，返回 CapabilityResult。"""
 
     def run_bash(self, payload: dict) -> CapabilityResult:
-        """隔离执行 bash 命令：独立子进程 + 强制超时 + 临时工作目录 + 环境白名单。"""
+        """隔离执行 bash 命令：独立子进程 + 强制超时 + 临时工作目录 + 环境白名单 + 命令白名单。
+
+        安全加固：命令白名单 + ``shell=False`` 参数列表执行，杜绝命令注入
+        （``echo hi; rm -rf /`` 这类 shell 拼接无法再执行）。
+        """
         command = payload.get("command")
         if not command:
             return CapabilityResult(ok=False, error="缺少必填参数 command")
+        # 命令白名单：只允许安全命令，其余拒绝
+        argv = command.split()
+        if not argv or argv[0] not in _BASH_CMD_ALLOWLIST:
+            return CapabilityResult(
+                ok=False,
+                error=f"命令不在白名单内：{argv[0] if argv else ''!r}",
+                data={"command": command, "sandboxed": True},
+            )
         try:
             timeout = int(payload.get("timeout") or 30)
         except (TypeError, ValueError):
@@ -69,8 +90,7 @@ class SandboxExecutor:
         try:
             with tempfile.TemporaryDirectory(prefix="libcore_sandbox_") as tmp:
                 completed = subprocess.run(
-                    command,
-                    shell=True,
+                    argv,             # shell=False：参数列表直投，杜绝 shell 注入
                     cwd=tmp,          # 隔离工作目录：命令写文件只落在临时目录
                     env=env,          # 环境白名单：丢弃宿主敏感变量
                     capture_output=True,
@@ -137,10 +157,18 @@ class SandboxExecutor:
         return CapabilityResult(ok=True, data={"result": completed.stdout.strip(), "sandboxed": True})
 
 
-# 受限 skill 执行器模板：在子进程里加载脚本后，屏蔽危险模块与 builtins 再调用 run(args)
+# 受限 skill 执行器模板：在子进程里**先屏蔽**危险模块与 builtins，再加载脚本并调用 run(args)
 _SKILL_RUNNER_TEMPLATE = textwrap.dedent("""\
     import builtins as _b, importlib as _i, sys as _s
     import json as _json
+
+    # 屏蔽时机前移：在加载脚本**之前**屏蔽危险模块，
+    # 脚本顶层代码无法 import 危险模块（os/subprocess/socket/...）。
+    # 注意：importlib 不屏蔽——exec_module 加载脚本需要它；危险的是用它加载
+    # os/subprocess 等，而这些已在屏蔽列表，importlib 加载它们同样会失败。
+    for _m in ("os", "subprocess", "socket", "shutil", "ctypes",
+               "multiprocessing", "pty", "signal"):
+        _s.modules[_m] = None
 
     _spec = _i.util.spec_from_file_location("_sandbox_skill", {script_path!r})
     _mod = _i.util.module_from_spec(_spec)
@@ -150,11 +178,8 @@ _SKILL_RUNNER_TEMPLATE = textwrap.dedent("""\
     if not callable(_run):
         raise RuntimeError("脚本未暴露 run(args)->dict 约定")
 
-    # 脚本已加载，此刻屏蔽危险模块与 builtins，再调用 run()（run 内无法 import 危险模块、
-    # 无法 open/exec/eval/input，从而无法真正执行危险操作）。
-    for _m in ("os", "subprocess", "socket", "shutil", "ctypes",
-               "multiprocessing", "pty", "signal"):
-        _s.modules[_m] = None
+    # 脚本已加载，此刻屏蔽危险 builtins（open/exec/eval/input），再调用 run()。
+    # 注意：open 必须在加载后屏蔽——exec_module 内部用 open 读脚本文件。
     for _danger in ("open", "exec", "eval", "input"):
         if hasattr(_b, _danger):
             setattr(_b, _danger, None)
@@ -182,6 +207,10 @@ class SandboxAspect(Aspect):
         payload = getattr(signal, "payload", None) or {}
         if signal.target == "tools" and (signal.op or "") == "run":
             if payload.get("name") == "bash":
+                # tools 门面把命令嵌套在 args 里（bash 工具 handler 读 payload["command"]）
+                args = payload.get("args")
+                if isinstance(args, dict):
+                    return self._executor.run_bash(args)
                 return self._executor.run_bash(payload)
         elif signal.target == "skill" and (signal.op or "") == "exec":
             # 解析脚本绝对路径（复用 skill 的防越权解析），再交给隔离执行器

@@ -57,7 +57,6 @@ class AgentLoop:
 
     async def run(self, goal: Any, *, session_id: Optional[str] = None) -> Scope:
         ctx = Scope(goal=goal, session_id=session_id)
-        waits = 0
         while not ctx.done:
             ctx.refresh(self.bus.manifest())  # 每轮注入最新可呼叫清单
             await self._prepare_input(ctx)    # 决策前无感注入 prompt/context 强化片段
@@ -72,13 +71,7 @@ class AgentLoop:
                 await self.bus.publish(Notice(topic="loop.finish",
                                               payload={"goal": goal}))
                 break
-            if action.wait:  # 本轮无目标，稍等后回到轮顶刷新清单
-                waits += 1
-                if waits >= 50:
-                    ctx.done = True
-                    ctx.observations.append({"error": "等待能力上线超时（护栏）"})
-                    await self._guard("wait_timeout", goal)
-                    break
+            if action.wait:  # 本轮无目标，稍等后回到轮顶刷新清单（超时治理由 wait_timeout 横切面承担）
                 await asyncio.sleep(0.02)
                 continue
             result = await self.bus.dispatch(Dispatch(
@@ -88,6 +81,10 @@ class AgentLoop:
                 cid=ctx.new_cid(),
                 parent_cid=ctx.root_cid,
             ))
+            # 决策后广播 loop.result，供治理横切面（死循环/追踪）拿到本轮真实结果
+            await self.bus.publish(Notice(topic="loop.result",
+                                          payload={"ctx": ctx, "action": action,
+                                                   "result": result}))
             # 决策后追加工具调用/结果消息，让模型看到"调了什么 → 得到什么"（决策后累积）
             ctx.add_input("_tool", [
                 LLMMsg("assistant", f"调用 {action.target}.{action.op}"),
@@ -132,8 +129,3 @@ class AgentLoop:
                             f"实际含 {type(msgs[0]).__name__}"
                         )
                     ctx.add_input(target, msgs, slot=node["slot"])
-
-    async def _guard(self, reason: str, goal: Any) -> None:
-        """护栏触发：发 Notice 进信号层，让日志横切面与订阅者都能感知（运行不漏）。"""
-        await self.bus.publish(Notice(topic="loop.guard",
-                                      payload={"reason": reason, "goal": goal}))

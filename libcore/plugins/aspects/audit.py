@@ -61,6 +61,30 @@ class AuditAspect(Aspect):
         self.path = path
         self._seq = 0
         self._prev_hash = "0" * 64  # 链头：全零占位
+        self._resume_chain()
+
+    def _resume_chain(self) -> None:
+        """从既有审计文件尾部续链：恢复 seq 与 prev_hash，保证跨实例 hash 链不断裂。
+
+        热更新重建横切管（AspectLoader.watch()）会新建 AuditAspect 实例，
+        若从全零重新起链，会破坏 append-only 的防篡改保证。这里读取文件
+        最后一条记录，续上 seq 与 hash。
+        """
+        path = self.path if not self.path.startswith("/") else self.path
+        if not os.path.exists(path):
+            return
+        last = None
+        try:
+            with open(path, encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if line:
+                        last = json.loads(line)
+        except (OSError, ValueError):
+            return
+        if last is not None:
+            self._seq = int(last.get("seq", 0))
+            self._prev_hash = str(last.get("hash", "0" * 64))
 
     def matches(self, signal) -> bool:
         # 审计"执行类"信号：tools run / skill exec / mcp run（读操作不记）
